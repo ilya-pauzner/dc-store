@@ -32,7 +32,7 @@ func main() {
 
 	// Get Stock, Modify Stock, Delete Stock
 	http.HandleFunc("/stocks/", handler2)
-	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 func handler1(w http.ResponseWriter, r *http.Request) {
