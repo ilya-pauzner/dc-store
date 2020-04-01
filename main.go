@@ -4,28 +4,38 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/go-redis/redis/v7"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
+	"time"
 )
 
 type Stock struct {
-	Name       string   `"json"`
-	Code       uint64   `"json, omitempty"`
-	Categories []string `"json"`
+	Name       string   `json:"name"`
+	Code       uint64   `json:"code,omitempty"`
+	Categories []string `json:"categories"`
 }
 
 var (
-	stocks map[uint64]Stock
-	lock   sync.Mutex
+	client *redis.Client
 )
 
 func main() {
-	stocks = make(map[uint64]Stock)
+	client = redis.NewClient(&redis.Options{
+		Addr:            "db:6379",
+		Password:        "", // no password set
+		DB:              0,  // use default DB
+		MaxRetries:      3,
+		MaxRetryBackoff: 5 * time.Second,
+	})
+
+	if client == nil {
+		log.Fatal("Failed to create Redis Client")
+	}
 
 	// Create Stock, Get All Stocks
 	http.HandleFunc("/stocks", handler1)
@@ -36,9 +46,6 @@ func main() {
 }
 
 func handler1(w http.ResponseWriter, r *http.Request) {
-	lock.Lock()
-	defer lock.Unlock()
-
 	if r.Method == "POST" {
 		// Create Stock
 		contents, err := ioutil.ReadAll(r.Body)
@@ -53,24 +60,49 @@ func handler1(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stock.Code = rand.Uint64()
-		stocks[stock.Code] = stock
 
 		contents, err = json.Marshal(stock)
 		if err != nil {
 			http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
 		}
 
-		w.Write(contents)
+		_, err = client.Set(strconv.FormatUint(stock.Code, 10), contents, 0).Result()
+		if err != nil {
+			http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		}
+
+		_, _ = w.Write(contents)
 
 	} else {
 		if r.Method == "" || r.Method == "GET" {
 			// Get All Stocks
-			contents, err := json.Marshal(stocks)
+			keys, err := client.Keys("*").Result()
 			if err != nil {
+				http.Error(w, "Failed to get keys from database", http.StatusInternalServerError)
+			}
+			stocks := make([]Stock, len(keys))
+			for i, key := range keys {
+				contents, err := client.Get(key).Result()
+				if err != nil {
+					http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+				}
+				if contents == "" {
+					http.Error(w, "No such stock", http.StatusNotFound)
+				}
+
+				var stock Stock
+				er := json.Unmarshal([]byte(contents), &stock)
+				if er != nil {
+					http.Error(w, "Failed to unmarshal data from database", http.StatusInternalServerError)
+				}
+				stocks[i] = stock
+			}
+			contents, er := json.Marshal(stocks)
+			if er != nil {
 				http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
 			}
 
-			w.Write(contents)
+			_, _ = w.Write(contents)
 		} else {
 			http.Error(w, "Unknown method", http.StatusBadRequest)
 		}
@@ -78,9 +110,6 @@ func handler1(w http.ResponseWriter, r *http.Request) {
 }
 
 func handler2(w http.ResponseWriter, r *http.Request) {
-	lock.Lock()
-	defer lock.Unlock()
-
 	parts := strings.Split(r.URL.Path, "/")
 	key := parts[len(parts)-1]
 
@@ -103,38 +132,46 @@ func handler2(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stock.Code = code
-		stocks[stock.Code] = stock
 
 		contents, err = json.Marshal(stock)
 		if err != nil {
 			http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
 		}
 
-		w.Write(contents)
+		_, err = client.Set(strconv.FormatUint(stock.Code, 10), contents, 0).Result()
+		if err != nil {
+			http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		}
+
+		_, _ = w.Write(contents)
 
 	} else {
 		if r.Method == "" || r.Method == "GET" {
 			// Get Stock
-			stock, ok := stocks[code]
-			if !ok {
+			stock, err := client.Get(strconv.FormatUint(code, 10)).Result()
+			if err != nil {
+				http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+			}
+			if stock == "" {
 				http.Error(w, "No such stock", http.StatusNotFound)
 			}
 
-			contents, err := json.Marshal(stock)
-			if err != nil {
-				http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
-			}
-
-			w.Write(contents)
+			_, _ = w.Write([]byte(stock))
 		} else {
 			if r.Method == "DELETE" {
 				// Delete Stock
-				_, ok := stocks[code]
-				if !ok {
+				stock, err := client.Get(strconv.FormatUint(code, 10)).Result()
+				if err != nil {
+					http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+				}
+				if stock == "" {
 					http.Error(w, "No such stock", http.StatusNotFound)
 				}
 
-				delete(stocks, code)
+				_, err = client.Del(strconv.FormatUint(code, 10)).Result()
+				if err != nil {
+					http.Error(w, "Failed to delete from database", http.StatusInternalServerError)
+				}
 			} else {
 				http.Error(w, "Unknown method", http.StatusBadRequest)
 			}
