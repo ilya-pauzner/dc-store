@@ -4,8 +4,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -27,10 +25,6 @@ var (
 )
 
 func main() {
-	portPtr := flag.Int("port", 0, "port number for server")
-	flag.Parse()
-	fmt.Println("port number", *portPtr)
-
 	stocks = make(map[uint64]Stock)
 
 	// Create Stock, Get All Stocks
@@ -38,7 +32,7 @@ func main() {
 
 	// Get Stock, Modify Stock, Delete Stock
 	http.HandleFunc("/stocks/", handler2)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf("localhost:%d", *portPtr), nil))
+	log.Fatal(http.ListenAndServe("localhost:8080", nil))
 }
 
 func handler1(w http.ResponseWriter, r *http.Request) {
