@@ -90,25 +90,34 @@ func main() {
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Unknown method", http.StatusBadRequest)
+		return
+	}
+
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
 
 	var data map[string]string
 	err = json.Unmarshal(contents, &data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
 	}
 
 	login, ok := data["login"]
 	if !ok {
 		http.Error(w, "Failed to get login from request body", http.StatusBadRequest)
+		return
 	}
 
 	password, ok := data["password"]
 	if !ok {
 		http.Error(w, "Failed to get password from request body", http.StatusBadRequest)
+		return
 	}
 
 	hash := sha256.New()
@@ -117,6 +126,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	_, err = passwordsClient.Set(login, hashedPassword, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
 	}
 
 	_, _ = w.Write([]byte("Registration successful!"))
@@ -126,22 +136,26 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
 
 	var data map[string]string
 	err = json.Unmarshal(contents, &data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
 	}
 
 	login, ok := data["login"]
 	if !ok {
 		http.Error(w, "Failed to get login from request body", http.StatusBadRequest)
+		return
 	}
 
 	password, ok := data["password"]
 	if !ok {
 		http.Error(w, "Failed to get password from request body", http.StatusBadRequest)
+		return
 	}
 
 	hash := sha256.New()
@@ -150,6 +164,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	hashedPasswordInDataBase, err := passwordsClient.Get(login).Result()
 	if !bytes.Equal(hashedPassword, []byte(hashedPasswordInDataBase)) {
 		http.Error(w, "Wrong password", http.StatusForbidden)
+		return
 	}
 
 	tokens := make(map[string]string)
@@ -160,6 +175,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	_, err = refreshTokensClient.Set(refreshTokenString, login, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
 	}
 
 	accessToken := rand.Uint64()
@@ -168,11 +184,13 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
 	}
 
 	contents, err = json.Marshal(tokens)
 	if err != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		return
 	}
 
 	_, _ = w.Write(contents)
@@ -182,24 +200,29 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
 
 	var data map[string]string
 	err = json.Unmarshal(contents, &data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
 	}
 
 	refreshTokenString, ok := data["refresh_token"]
 	if !ok {
 		http.Error(w, "Failed to get refresh_token from request body", http.StatusBadRequest)
+		return
 	}
 
 	_, err = refreshTokensClient.Get(refreshTokenString).Result()
 	if errors.Is(err, redis.Nil) {
 		http.Error(w, "Wrong refresh_token", http.StatusForbidden)
+		return
 	} else if err != nil {
 		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
 	}
 
 	tokens := make(map[string]string)
@@ -210,11 +233,13 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
 	}
 
 	contents, err = json.Marshal(tokens)
 	if err != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		return
 	}
 
 	_, _ = w.Write(contents)
@@ -224,24 +249,29 @@ func validate(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
 
 	var data map[string]string
 	err = json.Unmarshal(contents, &data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
 	}
 
 	accessTokenString, ok := data["access_token"]
 	if !ok {
 		http.Error(w, "Failed to get access_token from request body", http.StatusBadRequest)
+		return
 	}
 
 	_, err = accessTokensClient.Get(accessTokenString).Result()
 	if errors.Is(err, redis.Nil) {
 		http.Error(w, "Wrong access_token", http.StatusForbidden)
+		return
 	} else if err != nil {
 		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -255,6 +285,7 @@ func stocksHandler(w http.ResponseWriter, r *http.Request) {
 		getAllStocks(w, r)
 	default:
 		http.Error(w, "Unknown method", http.StatusBadRequest)
+		return
 	}
 }
 
@@ -262,12 +293,14 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
 
 	var stock Stock
 	err = json.Unmarshal(contents, &stock)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
 	}
 
 	stock.Code = rand.Uint64()
@@ -275,11 +308,13 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 	contents, err = json.Marshal(stock)
 	if err != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		return
 	}
 
 	_, err = stocksClient.Set(strconv.FormatUint(stock.Code, 10), contents, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
 	}
 
 	_, _ = w.Write(contents)
@@ -289,6 +324,7 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 	keys, err := stocksClient.Keys("*").Result()
 	if err != nil {
 		http.Error(w, "Failed to get keys from database", http.StatusInternalServerError)
+		return
 	}
 
 	stocks := make([]Stock, len(keys))
@@ -296,15 +332,18 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 		contents, err := stocksClient.Get(key).Result()
 		if err != nil {
 			http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+			return
 		}
 		if contents == "" {
 			http.Error(w, "No such stock", http.StatusNotFound)
+			return
 		}
 
 		var stock Stock
 		er := json.Unmarshal([]byte(contents), &stock)
 		if er != nil {
 			http.Error(w, "Failed to unmarshal data from database", http.StatusInternalServerError)
+			return
 		}
 
 		stocks[i] = stock
@@ -313,6 +352,7 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 	contents, er := json.Marshal(stocks)
 	if er != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		return
 	}
 
 	_, _ = w.Write(contents)
@@ -325,6 +365,7 @@ func stockIdHandler(w http.ResponseWriter, r *http.Request) {
 	code, err := strconv.ParseUint(key, 10, 64)
 	if err != nil {
 		http.Error(w, "Bad stock number", http.StatusBadRequest)
+		return
 	}
 
 	switch r.Method {
@@ -336,6 +377,7 @@ func stockIdHandler(w http.ResponseWriter, r *http.Request) {
 		deleteStock(w, r, code)
 	default:
 		http.Error(w, "Unknown method", http.StatusBadRequest)
+		return
 	}
 }
 
@@ -343,12 +385,14 @@ func modifyStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
 	}
 
 	var stock Stock
 	err = json.Unmarshal(contents, &stock)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
 	}
 
 	stock.Code = code
@@ -356,11 +400,13 @@ func modifyStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	contents, err = json.Marshal(stock)
 	if err != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		return
 	}
 
 	_, err = stocksClient.Set(strconv.FormatUint(stock.Code, 10), contents, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
 	}
 
 	_, _ = w.Write(contents)
@@ -370,9 +416,11 @@ func getStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	stock, err := stocksClient.Get(strconv.FormatUint(code, 10)).Result()
 	if err != nil {
 		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
 	}
 	if stock == "" {
 		http.Error(w, "No such stock", http.StatusNotFound)
+		return
 	}
 
 	_, _ = w.Write([]byte(stock))
@@ -382,13 +430,16 @@ func deleteStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	stock, err := stocksClient.Get(strconv.FormatUint(code, 10)).Result()
 	if err != nil {
 		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
 	}
 	if stock == "" {
 		http.Error(w, "No such stock", http.StatusNotFound)
+		return
 	}
 
 	_, err = stocksClient.Del(strconv.FormatUint(code, 10)).Result()
 	if err != nil {
 		http.Error(w, "Failed to delete from database", http.StatusInternalServerError)
+		return
 	}
 }
