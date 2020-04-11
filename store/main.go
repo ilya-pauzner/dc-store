@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"github.com/go-redis/redis/v7"
@@ -44,10 +45,31 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
+func validate(contents []byte) (bool, error) {
+	answer, err := http.Post("http://auth:8081/validate", "application/json", bytes.NewReader(contents))
+	if err != nil {
+		return false, err
+	}
+	if answer.StatusCode != http.StatusOK {
+		return false, nil
+	}
+	return true, nil
+}
+
 func createStock(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := validate(contents)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -75,7 +97,23 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(contents)
 }
 
-func getAllStocks(w http.ResponseWriter, _ *http.Request) {
+func getAllStocks(w http.ResponseWriter, r *http.Request) {
+	contents, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := validate(contents)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	keys, err := stocksClient.Keys("*").Result()
 	if err != nil {
 		http.Error(w, "Failed to get keys from database", http.StatusInternalServerError)
@@ -114,18 +152,28 @@ func getAllStocks(w http.ResponseWriter, _ *http.Request) {
 }
 
 func modifyStock(w http.ResponseWriter, r *http.Request) {
+	contents, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := validate(contents)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	// because of regex in router, key exists in vars
 	vars := mux.Vars(r)
 	codeString := vars["code"]
 	code, err := strconv.ParseUint(codeString, 10, 64)
 	if err != nil {
 		http.Error(w, "Bad stock number", http.StatusBadRequest)
-		return
-	}
-
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
 
@@ -154,6 +202,22 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStock(w http.ResponseWriter, r *http.Request) {
+	contents, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := validate(contents)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	// because of regex in router, key exists in vars
 	vars := mux.Vars(r)
 	codeString := vars["code"]
@@ -172,11 +236,27 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteStock(w http.ResponseWriter, r *http.Request) {
+	contents, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := validate(contents)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	// because of regex in router, key exists in vars
 	vars := mux.Vars(r)
 	codeString := vars["code"]
 
-	_, err := stocksClient.Get(codeString).Result()
+	_, err = stocksClient.Get(codeString).Result()
 	if errors.Is(err, redis.Nil) {
 		http.Error(w, "Wrong stock_code", http.StatusForbidden)
 		return
