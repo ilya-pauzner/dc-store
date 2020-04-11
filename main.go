@@ -91,6 +91,15 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = passwordsClient.Get(login).Result()
+	if err == nil {
+		http.Error(w, "Login already exists", http.StatusBadRequest)
+		return
+	} else if !errors.Is(err, redis.Nil) {
+		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
+	}
+
 	password, ok := data["password"]
 	if !ok {
 		http.Error(w, "Failed to get password from request body", http.StatusBadRequest)
@@ -187,10 +196,28 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	accessTokenString, ok := data["access_token"]
+	if !ok {
+		http.Error(w, "Failed to get access_token from request body", http.StatusBadRequest)
+		return
+	}
+
+	refreshTokenFromDb, err := accessTokensClient.Get(accessTokenString).Result()
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "Wrong access_token", http.StatusForbidden)
+		return
+	} else if err != nil {
+		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
+	}
+
 	refreshTokenString, ok := data["refresh_token"]
 	if !ok {
 		http.Error(w, "Failed to get refresh_token from request body", http.StatusBadRequest)
 		return
+	}
+	if refreshTokenString != refreshTokenFromDb {
+		http.Error(w, "access_token and refresh_token do not form a pair", http.StatusForbidden)
 	}
 
 	_, err = refreshTokensClient.Get(refreshTokenString).Result()
@@ -205,7 +232,7 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	tokens := make(map[string]string)
 
 	accessToken := rand.Uint64()
-	accessTokenString := strconv.FormatUint(accessToken, 10)
+	accessTokenString = strconv.FormatUint(accessToken, 10)
 	tokens["access_token"] = accessTokenString
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
@@ -354,7 +381,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = stocksClient.Set(strconv.FormatUint(stock.Code, 10), contents, 0).Result()
+	_, err = stocksClient.Set(codeString, contents, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
 		return
