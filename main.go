@@ -32,35 +32,23 @@ var (
 
 func main() {
 	stocksClient = redis.NewClient(&redis.Options{
-		Addr:            "db:6379",
-		Password:        "", // no password set
-		DB:              0,  // use default DB
-		MaxRetries:      3,
-		MaxRetryBackoff: 5 * time.Second,
+		Addr: "db:6379",
+		DB:   0, // use default DB
 	})
 
 	passwordsClient = redis.NewClient(&redis.Options{
-		Addr:            "db:6379",
-		Password:        "", // no password set
-		DB:              1,
-		MaxRetries:      3,
-		MaxRetryBackoff: 5 * time.Second,
+		Addr: "db:6379",
+		DB:   1,
 	})
 
 	accessTokensClient = redis.NewClient(&redis.Options{
-		Addr:            "db:6379",
-		Password:        "", // no password set
-		DB:              2,
-		MaxRetries:      3,
-		MaxRetryBackoff: 5 * time.Second,
+		Addr: "db:6379",
+		DB:   2,
 	})
 
 	refreshTokensClient = redis.NewClient(&redis.Options{
-		Addr:            "db:6379",
-		Password:        "", // no password set
-		DB:              3,
-		MaxRetries:      3,
-		MaxRetryBackoff: 5 * time.Second,
+		Addr: "db:6379",
+		DB:   3,
 	})
 
 	r := mux.NewRouter()
@@ -297,7 +285,7 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(contents)
 }
 
-func getAllStocks(w http.ResponseWriter, r *http.Request) {
+func getAllStocks(w http.ResponseWriter, _ *http.Request) {
 	keys, err := stocksClient.Keys("*").Result()
 	if err != nil {
 		http.Error(w, "Failed to get keys from database", http.StatusInternalServerError)
@@ -307,12 +295,12 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 	stocks := make([]Stock, len(keys))
 	for i, key := range keys {
 		contents, err := stocksClient.Get(key).Result()
-		if err != nil {
-			http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		if errors.Is(err, redis.Nil) {
+			http.Error(w, "No such key in database", http.StatusNotFound)
 			return
 		}
-		if contents == "" {
-			http.Error(w, "No such stock", http.StatusNotFound)
+		if err != nil {
+			http.Error(w, "Failed to get from database", http.StatusInternalServerError)
 			return
 		}
 
@@ -381,12 +369,12 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 	codeString := vars["code"]
 
 	stock, err := stocksClient.Get(codeString).Result()
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "Wrong stock code", http.StatusForbidden)
 		return
 	}
-	if stock == "" {
-		http.Error(w, "No such stock", http.StatusNotFound)
+	if err != nil {
+		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
 		return
 	}
 
@@ -398,13 +386,13 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	codeString := vars["code"]
 
-	stock, err := stocksClient.Get(codeString).Result()
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	_, err := stocksClient.Get(codeString).Result()
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "Wrong stock_code", http.StatusForbidden)
 		return
 	}
-	if stock == "" {
-		http.Error(w, "No such stock", http.StatusNotFound)
+	if err != nil {
+		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
 		return
 	}
 
