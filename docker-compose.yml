@@ -1,9 +1,15 @@
 version: '3'
 services:
   web:
-    build: .
+    build: ./store
     ports:
       - 8080:8080
+    links:
+      - db
+  auth:
+    build: ./auth
+    ports:
+      - 8081:8081
     links:
       - db
   db:
