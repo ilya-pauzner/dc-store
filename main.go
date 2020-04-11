@@ -8,12 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/go-redis/redis/v7"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -38,9 +38,6 @@ func main() {
 		MaxRetries:      3,
 		MaxRetryBackoff: 5 * time.Second,
 	})
-	if stocksClient == nil {
-		log.Fatal("Failed to create Redis Client")
-	}
 
 	passwordsClient = redis.NewClient(&redis.Options{
 		Addr:            "db:6379",
@@ -49,9 +46,6 @@ func main() {
 		MaxRetries:      3,
 		MaxRetryBackoff: 5 * time.Second,
 	})
-	if passwordsClient == nil {
-		log.Fatal("Failed to create Redis Client")
-	}
 
 	accessTokensClient = redis.NewClient(&redis.Options{
 		Addr:            "db:6379",
@@ -60,9 +54,6 @@ func main() {
 		MaxRetries:      3,
 		MaxRetryBackoff: 5 * time.Second,
 	})
-	if accessTokensClient == nil {
-		log.Fatal("Failed to create Redis Client")
-	}
 
 	refreshTokensClient = redis.NewClient(&redis.Options{
 		Addr:            "db:6379",
@@ -71,30 +62,28 @@ func main() {
 		MaxRetries:      3,
 		MaxRetryBackoff: 5 * time.Second,
 	})
-	if refreshTokensClient == nil {
-		log.Fatal("Failed to create Redis Client")
-	}
+
+	r := mux.NewRouter()
 
 	// Will be moved to another service
-	http.HandleFunc("/register", register)
-	http.HandleFunc("/authorize", authorize)
-	http.HandleFunc("/refresh", refresh)
-	http.HandleFunc("/validate", validate)
+	r.HandleFunc("/register", register).Methods("POST")
+	r.HandleFunc("/authorize", authorize).Methods("POST")
+	r.HandleFunc("/refresh", refresh).Methods("POST")
+	r.HandleFunc("/validate", validate).Methods("POST")
 
 	// createStock, getAllStocks
-	http.HandleFunc("/stocks", stocksHandler)
+	r.HandleFunc("/stocks", getAllStocks).Methods("GET")
+	r.HandleFunc("/stocks", createStock).Methods("POST")
 
 	// getStock, modifyStock, deleteStock
-	http.HandleFunc("/stocks/", stockIdHandler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	r.HandleFunc("/stocks/{code:[0-9]+}", getStock).Methods("GET")
+	r.HandleFunc("/stocks/{code:[0-9]+}", modifyStock).Methods("PUT")
+	r.HandleFunc("/stocks/{code:[0-9]+}", deleteStock).Methods("DELETE")
+
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Unknown method", http.StatusBadRequest)
-		return
-	}
-
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -129,7 +118,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _ = w.Write([]byte("Registration successful!"))
+	w.WriteHeader(http.StatusOK)
 }
 
 func authorize(w http.ResponseWriter, r *http.Request) {
@@ -277,18 +266,6 @@ func validate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func stocksHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "POST":
-		createStock(w, r)
-	case "", "GET":
-		getAllStocks(w, r)
-	default:
-		http.Error(w, "Unknown method", http.StatusBadRequest)
-		return
-	}
-}
-
 func createStock(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -358,30 +335,16 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(contents)
 }
 
-func stockIdHandler(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	key := parts[len(parts)-1]
-
-	code, err := strconv.ParseUint(key, 10, 64)
+func modifyStock(w http.ResponseWriter, r *http.Request) {
+	// because of regex in router, key exists in vars
+	vars := mux.Vars(r)
+	codeString := vars["code"]
+	code, err := strconv.ParseUint(codeString, 10, 64)
 	if err != nil {
 		http.Error(w, "Bad stock number", http.StatusBadRequest)
 		return
 	}
 
-	switch r.Method {
-	case "PUT":
-		modifyStock(w, r, code)
-	case "", "GET":
-		getStock(w, r, code)
-	case "DELETE":
-		deleteStock(w, r, code)
-	default:
-		http.Error(w, "Unknown method", http.StatusBadRequest)
-		return
-	}
-}
-
-func modifyStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -412,8 +375,12 @@ func modifyStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	_, _ = w.Write(contents)
 }
 
-func getStock(w http.ResponseWriter, r *http.Request, code uint64) {
-	stock, err := stocksClient.Get(strconv.FormatUint(code, 10)).Result()
+func getStock(w http.ResponseWriter, r *http.Request) {
+	// because of regex in router, key exists in vars
+	vars := mux.Vars(r)
+	codeString := vars["code"]
+
+	stock, err := stocksClient.Get(codeString).Result()
 	if err != nil {
 		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
 		return
@@ -426,8 +393,12 @@ func getStock(w http.ResponseWriter, r *http.Request, code uint64) {
 	_, _ = w.Write([]byte(stock))
 }
 
-func deleteStock(w http.ResponseWriter, r *http.Request, code uint64) {
-	stock, err := stocksClient.Get(strconv.FormatUint(code, 10)).Result()
+func deleteStock(w http.ResponseWriter, r *http.Request) {
+	// because of regex in router, key exists in vars
+	vars := mux.Vars(r)
+	codeString := vars["code"]
+
+	stock, err := stocksClient.Get(codeString).Result()
 	if err != nil {
 		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
 		return
@@ -437,7 +408,7 @@ func deleteStock(w http.ResponseWriter, r *http.Request, code uint64) {
 		return
 	}
 
-	_, err = stocksClient.Del(strconv.FormatUint(code, 10)).Result()
+	_, err = stocksClient.Del(codeString).Result()
 	if err != nil {
 		http.Error(w, "Failed to delete from database", http.StatusInternalServerError)
 		return
