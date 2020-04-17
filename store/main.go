@@ -8,6 +8,8 @@ import (
 	"errors"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
+	"github.com/streadway/amqp"
+	_ "github.com/streadway/amqp"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -23,6 +25,8 @@ type Stock struct {
 
 var (
 	stocksClient *redis.Client
+	ch           *amqp.Channel
+	q            amqp.Queue
 )
 
 func main() {
@@ -30,6 +34,30 @@ func main() {
 		Addr: "db:6379",
 		DB:   0, // use default DB
 	})
+
+	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	if err != nil {
+		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	ch, err = conn.Channel()
+	if err != nil {
+		log.Fatalf("%s: %s", "Failed to open a channel", err)
+	}
+	defer func() { _ = ch.Close() }()
+
+	q, err = ch.QueueDeclare(
+		"hello", // name
+		false,   // durable
+		false,   // delete when unused
+		false,   // exclusive
+		false,   // no-wait
+		nil,     // arguments
+	)
+	if err != nil {
+		log.Fatalf("%s: %s", "Failed to declare a queue", err)
+	}
 
 	r := mux.NewRouter()
 
@@ -43,6 +71,19 @@ func main() {
 	r.HandleFunc("/stocks/{code:[0-9]+}", deleteStock).Methods("DELETE")
 
 	log.Fatal(http.ListenAndServe(":8080", r))
+}
+
+func sendMessage(message []byte) error {
+	return ch.Publish(
+		"",     // exchange
+		q.Name, // routing key
+		false,  // mandatory
+		false,  // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        message,
+		})
+
 }
 
 func validate(contents []byte) (bool, error) {

@@ -17,3 +17,8 @@ services:
     image: "redis:alpine"
     ports:
       - 6379:6379
+  rabbitmq:
+    image: "rabbitmq:latest"
+    ports:
+      - 5672:5672
+      - 15672:15672
