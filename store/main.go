@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 type Stock struct {
@@ -35,6 +36,7 @@ func main() {
 		DB:   0, // use default DB
 	})
 
+	time.Sleep(time.Minute)
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
