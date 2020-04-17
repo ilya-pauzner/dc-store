@@ -1,18 +1,25 @@
 version: '3'
 services:
-  web:
+  store:
     build: ./store
     ports:
       - 8080:8080
     links:
       - db
       - auth
+      - rabbitmq
   auth:
     build: ./auth
     ports:
       - 8081:8081
     links:
       - db
+  sender:
+    build: ./sender
+    ports:
+      - 8082:8082
+    links:
+      - rabbitmq
   db:
     image: "redis:alpine"
     ports:

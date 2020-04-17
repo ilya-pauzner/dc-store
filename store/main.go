@@ -35,7 +35,7 @@ func main() {
 		DB:   0, // use default DB
 	})
 
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
 	}
@@ -60,6 +60,9 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+
+	// send
+	r.HandleFunc("/send", send).Methods("POST")
 
 	// createStock, getAllStocks
 	r.HandleFunc("/stocks", getAllStocks).Methods("GET")
@@ -95,6 +98,20 @@ func validate(contents []byte) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func send(w http.ResponseWriter, r *http.Request) {
+	contents, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	err = sendMessage(contents)
+	if err != nil {
+		http.Error(w, "Failed to send message", http.StatusInternalServerError)
+		return
+	}
 }
 
 func createStock(w http.ResponseWriter, r *http.Request) {
