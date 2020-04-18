@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,8 @@ import (
 	"github.com/streadway/amqp"
 	"io/ioutil"
 	"log"
-	"math/rand"
+	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,6 +30,12 @@ var (
 	ch *amqp.Channel
 	q  amqp.Queue
 )
+
+func randomUint64() uint64 {
+	bigNumber := math.Pow10(18)
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(bigNumber)))
+	return n.Uint64()
+}
 
 func main() {
 	passwordsClient = redis.NewClient(&redis.Options{
@@ -171,7 +179,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	linkCode := strconv.FormatUint(rand.Uint64(), 10)
+	linkCode := strconv.FormatUint(randomUint64(), 10)
 	_, err = registrationsClient.Set(linkCode, "0", 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
@@ -246,7 +254,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 
 	tokens := make(map[string]string)
 
-	refreshToken := rand.Uint64()
+	refreshToken := randomUint64()
 	refreshTokenString := strconv.FormatUint(refreshToken, 10)
 	tokens["refresh_token"] = refreshTokenString
 	_, err = refreshTokensClient.Set(refreshTokenString, email, 0).Result()
@@ -255,7 +263,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken := rand.Uint64()
+	accessToken := randomUint64()
 	accessTokenString := strconv.FormatUint(accessToken, 10)
 	tokens["access_token"] = accessTokenString
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
@@ -322,7 +330,7 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 
 	tokens := make(map[string]string)
 
-	accessToken := rand.Uint64()
+	accessToken := randomUint64()
 	accessTokenString = strconv.FormatUint(accessToken, 10)
 	tokens["access_token"] = accessTokenString
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()

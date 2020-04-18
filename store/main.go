@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"github.com/go-redis/redis/v7"
@@ -11,7 +12,8 @@ import (
 	_ "github.com/streadway/amqp"
 	"io/ioutil"
 	"log"
-	"math/rand"
+	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 )
@@ -25,6 +27,12 @@ type Stock struct {
 var (
 	stocksClient *redis.Client
 )
+
+func randomUint64() uint64 {
+	bigNumber := math.Pow10(18)
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(bigNumber)))
+	return n.Uint64()
+}
 
 func main() {
 	stocksClient = redis.NewClient(&redis.Options{
@@ -81,7 +89,7 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stock.Code = rand.Uint64()
+	stock.Code = randomUint64()
 
 	contents, err = json.Marshal(stock)
 	if err != nil {
