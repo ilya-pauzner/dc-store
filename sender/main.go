@@ -57,10 +57,34 @@ func main() {
 
 	go func() {
 		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
+			err := sendMessageToConsole([]byte("Received a message: " + string(d.Body)))
+			if err != nil {
+				log.Printf("%s: %s", "Failed to send message to console", err)
+				err = sendMessageToQueue(d.Body)
+				if err != nil {
+					log.Printf("%s: %s", "Failed to send message back to queue", err)
+				}
+			}
 		}
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 	<-forever
+}
+
+func sendMessageToConsole(message []byte) error {
+	log.Println(string(message))
+	return nil
+}
+
+func sendMessageToQueue(message []byte) error {
+	return ch.Publish(
+		"",     // exchange
+		q.Name, // routing key
+		false,  // mandatory
+		false,  // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        message,
+		})
 }

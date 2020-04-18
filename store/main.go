@@ -78,7 +78,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func sendMessage(message []byte) error {
+func sendMessageToQueue(message []byte) error {
 	return ch.Publish(
 		"",     // exchange
 		q.Name, // routing key
@@ -88,7 +88,6 @@ func sendMessage(message []byte) error {
 			ContentType: "text/plain",
 			Body:        message,
 		})
-
 }
 
 func validate(contents []byte) (bool, error) {
@@ -109,7 +108,7 @@ func send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = sendMessage(contents)
+	err = sendMessageToQueue(contents)
 	if err != nil {
 		http.Error(w, "Failed to send message", http.StatusInternalServerError)
 		return
