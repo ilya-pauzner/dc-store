@@ -8,14 +8,12 @@ import (
 	"errors"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
-	"github.com/streadway/amqp"
 	_ "github.com/streadway/amqp"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 type Stock struct {
@@ -26,8 +24,6 @@ type Stock struct {
 
 var (
 	stocksClient *redis.Client
-	ch           *amqp.Channel
-	q            amqp.Queue
 )
 
 func main() {
@@ -36,35 +32,7 @@ func main() {
 		DB:   0, // use default DB
 	})
 
-	time.Sleep(time.Minute)
-	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
-	if err != nil {
-		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	ch, err = conn.Channel()
-	if err != nil {
-		log.Fatalf("%s: %s", "Failed to open a channel", err)
-	}
-	defer func() { _ = ch.Close() }()
-
-	q, err = ch.QueueDeclare(
-		"hello", // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
-	)
-	if err != nil {
-		log.Fatalf("%s: %s", "Failed to declare a queue", err)
-	}
-
 	r := mux.NewRouter()
-
-	// send
-	r.HandleFunc("/send", send).Methods("POST")
 
 	// createStock, getAllStocks
 	r.HandleFunc("/stocks", getAllStocks).Methods("GET")
@@ -78,18 +46,6 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func sendMessageToQueue(message []byte) error {
-	return ch.Publish(
-		"",     // exchange
-		q.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        message,
-		})
-}
-
 func validate(contents []byte) (bool, error) {
 	answer, err := http.Post("http://auth:8081/validate", "application/json", bytes.NewReader(contents))
 	if err != nil {
@@ -99,20 +55,6 @@ func validate(contents []byte) (bool, error) {
 		return false, nil
 	}
 	return true, nil
-}
-
-func send(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	err = sendMessageToQueue(contents)
-	if err != nil {
-		http.Error(w, "Failed to send message", http.StatusInternalServerError)
-		return
-	}
 }
 
 func createStock(w http.ResponseWriter, r *http.Request) {

@@ -19,7 +19,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n\t\"login\": \"a\",\n\t\"password\": \"b\"\n}",
+					"raw": "{\n\t\"email\": \"a\",\n\t\"password\": \"b\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -53,7 +53,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n\t\"login\": \"a\",\n\t\"password\" : \"b\"\n}",
+					"raw": "{\n\t\"email\": \"a\",\n\t\"password\" : \"b\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"

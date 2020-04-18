@@ -7,18 +7,22 @@ services:
     links:
       - db
       - auth
-      - rabbitmq
   auth:
     build: ./auth
     ports:
       - 8081:8081
     links:
       - db
+      - rabbitmq
+    depends_on:
+      - rabbitmq
   sender:
     build: ./sender
     ports:
       - 8082:8082
     links:
+      - rabbitmq
+    depends_on:
       - rabbitmq
   db:
     image: "redis:alpine"
