@@ -171,13 +171,14 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	link := fmt.Sprintf("localhost:8081/links/%d", rand.Uint64())
-	_, err = registrationsClient.Set(link, "0", 0).Result()
+	linkCode := strconv.FormatUint(rand.Uint64(), 10)
+	_, err = registrationsClient.Set(linkCode, "0", 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
+	link := fmt.Sprintf("localhost:8081/links/%s", linkCode)
 	err = sendMessageToQueue([]byte(link))
 	if err != nil {
 		http.Error(w, "Failed to send message", http.StatusInternalServerError)
