@@ -5,6 +5,7 @@ package main
 import (
 	"github.com/streadway/amqp"
 	"log"
+	"time"
 )
 
 var (
@@ -13,6 +14,8 @@ var (
 )
 
 func main() {
+	time.Sleep(time.Minute)
+
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
