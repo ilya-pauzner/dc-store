@@ -25,7 +25,8 @@ var (
 	passwordsClient     *redis.Client
 	accessTokensClient  *redis.Client
 	refreshTokensClient *redis.Client
-	registrationsClient *redis.Client
+	linkToClickedClient *redis.Client
+	emailToLinkClient   *redis.Client
 
 	ch *amqp.Channel
 	q  amqp.Queue
@@ -53,9 +54,14 @@ func main() {
 		DB:   3,
 	})
 
-	registrationsClient = redis.NewClient(&redis.Options{
+	linkToClickedClient = redis.NewClient(&redis.Options{
 		Addr: "db:6379",
 		DB:   4,
+	})
+
+	emailToLinkClient = redis.NewClient(&redis.Options{
+		Addr: "db:6379",
+		DB:   5,
 	})
 
 	time.Sleep(time.Minute)
@@ -112,7 +118,7 @@ func activate(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	codeString := vars["code"]
 
-	value, err := registrationsClient.Get(codeString).Result()
+	value, err := linkToClickedClient.Get(codeString).Result()
 	if errors.Is(err, redis.Nil) {
 		http.Error(w, "Wrong activation link", http.StatusBadRequest)
 		return
@@ -123,12 +129,13 @@ func activate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if value != "0" {
+		log.Print(value)
 		http.Error(w, "Activation link already used", http.StatusBadRequest)
 		return
 	}
 	value = "1"
 
-	_, err = registrationsClient.Set(codeString, value, 0).Result()
+	_, err = linkToClickedClient.Set(codeString, value, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
 		return
@@ -180,7 +187,12 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	linkCode := strconv.FormatUint(randomUint64(), 10)
-	_, err = registrationsClient.Set(linkCode, "0", 0).Result()
+	_, err = linkToClickedClient.Set(linkCode, "0", 0).Result()
+	if err != nil {
+		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
+	}
+	_, err = emailToLinkClient.Set(email, linkCode, 0).Result()
 	if err != nil {
 		http.Error(w, "Failed to update database", http.StatusInternalServerError)
 		return
@@ -216,7 +228,17 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activated, err := registrationsClient.Get(email).Result()
+	linkCode, err := emailToLinkClient.Get(email).Result()
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "No such email ever registered", http.StatusForbidden)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		return
+	}
+
+	activated, err := linkToClickedClient.Get(linkCode).Result()
 	if errors.Is(err, redis.Nil) {
 		http.Error(w, "No such email ever registered", http.StatusForbidden)
 		return
