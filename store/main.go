@@ -9,7 +9,6 @@ import (
 	"errors"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
-	_ "github.com/streadway/amqp"
 	"io/ioutil"
 	"log"
 	"math"

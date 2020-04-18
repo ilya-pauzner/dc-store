@@ -64,8 +64,6 @@ func main() {
 		DB:   5,
 	})
 
-	time.Sleep(time.Minute)
-
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
