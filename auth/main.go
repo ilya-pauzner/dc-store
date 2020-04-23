@@ -38,30 +38,11 @@ func randomUint64() uint64 {
 }
 
 func main() {
-	passwordsClient = redis.NewClient(&redis.Options{
-		Addr: "db:6379",
-		DB:   1,
-	})
-
-	accessTokensClient = redis.NewClient(&redis.Options{
-		Addr: "db:6379",
-		DB:   2,
-	})
-
-	refreshTokensClient = redis.NewClient(&redis.Options{
-		Addr: "db:6379",
-		DB:   3,
-	})
-
-	linkToClickedClient = redis.NewClient(&redis.Options{
-		Addr: "db:6379",
-		DB:   4,
-	})
-
-	emailToLinkClient = redis.NewClient(&redis.Options{
-		Addr: "db:6379",
-		DB:   5,
-	})
+	passwordsClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
+	accessTokensClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 2})
+	refreshTokensClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 3})
+	linkToClickedClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 4})
+	emailToLinkClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 5})
 
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
