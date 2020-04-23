@@ -66,6 +66,15 @@ func validateAndAnswer(w http.ResponseWriter, contents []byte) bool {
 	return true
 }
 
+func answerRedisError(w http.ResponseWriter, description string, err error) error {
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
+	} else if err != nil {
+		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+	}
+	return err
+}
+
 func createStock(w http.ResponseWriter, r *http.Request) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -234,13 +243,4 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to delete from database", http.StatusInternalServerError)
 		return
 	}
-}
-
-func answerRedisError(w http.ResponseWriter, description string, err error) error {
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
-	} else if err != nil {
-		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
-	}
-	return err
 }

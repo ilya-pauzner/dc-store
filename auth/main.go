@@ -80,6 +80,15 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8081", r))
 }
 
+func answerRedisError(w http.ResponseWriter, description string, err error) error {
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
+	} else if err != nil {
+		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+	}
+	return err
+}
+
 func sendMessageToQueue(message []byte) error {
 	return ch.Publish(
 		"",     // exchange
@@ -318,13 +327,4 @@ func validate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-}
-
-func answerRedisError(w http.ResponseWriter, description string, err error) error {
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
-	} else if err != nil {
-		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
-	}
-	return err
 }
