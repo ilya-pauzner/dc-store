@@ -53,15 +53,17 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func validate(contents []byte) (bool, error) {
+func validateAndAnswer(w http.ResponseWriter, contents []byte) bool {
 	answer, err := http.Post("http://auth:8081/validate", "application/json", bytes.NewReader(contents))
 	if err != nil {
-		return false, err
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return false
 	}
 	if answer.StatusCode != http.StatusOK {
-		return false, nil
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return false
 	}
-	return true, nil
+	return true
 }
 
 func createStock(w http.ResponseWriter, r *http.Request) {
@@ -71,13 +73,7 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, contents) {
 		return
 	}
 
@@ -112,13 +108,7 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, contents) {
 		return
 	}
 
@@ -164,13 +154,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, contents) {
 		return
 	}
 
@@ -214,13 +198,7 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, contents) {
 		return
 	}
 
@@ -248,13 +226,7 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, contents) {
 		return
 	}
 
