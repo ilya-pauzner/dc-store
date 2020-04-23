@@ -121,12 +121,7 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 	stocks := make([]Stock, len(keys))
 	for i, key := range keys {
 		contents, err := stocksClient.Get(key).Result()
-		if errors.Is(err, redis.Nil) {
-			http.Error(w, "No such key in database", http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		if answerRedisError(w, "stocks", err) != nil {
 			return
 		}
 
@@ -207,12 +202,7 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 	codeString := vars["code"]
 
 	stock, err := stocksClient.Get(codeString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong stock code", http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "stocks", err) != nil {
 		return
 	}
 
@@ -235,12 +225,7 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 	codeString := vars["code"]
 
 	_, err = stocksClient.Get(codeString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong stock_code", http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "stocks", err) != nil {
 		return
 	}
 
@@ -249,4 +234,13 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to delete from database", http.StatusInternalServerError)
 		return
 	}
+}
+
+func answerRedisError(w http.ResponseWriter, description string, err error) error {
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
+	} else if err != nil {
+		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+	}
+	return err
 }
