@@ -150,13 +150,11 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 		stocks[i] = stock
 	}
 
-	contents, er := json.Marshal(stocks)
+	er := json.NewEncoder(w).Encode(stocks)
 	if er != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
-
-	_, _ = w.Write(contents)
 }
 
 func modifyStock(w http.ResponseWriter, r *http.Request) {

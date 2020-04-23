@@ -12,7 +12,6 @@ import (
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"github.com/streadway/amqp"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/big"
@@ -141,14 +140,8 @@ func activate(w http.ResponseWriter, r *http.Request) {
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
 	var data map[string]string
-	err = json.Unmarshal(contents, &data)
+	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
@@ -207,14 +200,8 @@ func register(w http.ResponseWriter, r *http.Request) {
 }
 
 func authorize(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
 	var data map[string]string
-	err = json.Unmarshal(contents, &data)
+	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
@@ -292,24 +279,16 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contents, err = json.Marshal(tokens)
+	err = json.NewEncoder(w).Encode(tokens)
 	if err != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
-
-	_, _ = w.Write(contents)
 }
 
 func refresh(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
 	var data map[string]string
-	err = json.Unmarshal(contents, &data)
+	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
@@ -359,24 +338,16 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contents, err = json.Marshal(tokens)
+	err = json.NewEncoder(w).Encode(tokens)
 	if err != nil {
 		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
-
-	_, _ = w.Write(contents)
 }
 
 func validate(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
 	var data map[string]string
-	err = json.Unmarshal(contents, &data)
+	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
