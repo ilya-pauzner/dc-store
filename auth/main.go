@@ -116,12 +116,7 @@ func activate(w http.ResponseWriter, r *http.Request) {
 	codeString := vars["code"]
 
 	value, err := linkToClickedClient.Get(codeString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong activation link", http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "activation links", err) != nil {
 		return
 	}
 
@@ -214,22 +209,12 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	linkCode, err := emailToLinkClient.Get(email).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "No such email ever registered", http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "registered emails", err) != nil {
 		return
 	}
 
 	activated, err := linkToClickedClient.Get(linkCode).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "No such email ever registered", http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "registered emails", err) != nil {
 		return
 	}
 	if activated != "1" {
@@ -246,12 +231,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	hashedPassword := hash.Sum([]byte(password))
 
 	hashedPasswordInDataBase, err := passwordsClient.Get(email).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "No such email ever registered", http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusBadRequest)
+	if answerRedisError(w, "registered emails", err) != nil {
 		return
 	}
 	if !bytes.Equal(hashedPassword, []byte(hashedPasswordInDataBase)) {
@@ -301,11 +281,7 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	refreshTokenFromDb, err := accessTokensClient.Get(accessTokenString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong access_token", http.StatusForbidden)
-		return
-	} else if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "access_token", err) != nil {
 		return
 	}
 
@@ -319,11 +295,7 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = refreshTokensClient.Get(refreshTokenString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong refresh_token", http.StatusForbidden)
-		return
-	} else if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
 
@@ -360,13 +332,18 @@ func validate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = accessTokensClient.Get(accessTokenString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong access_token", http.StatusForbidden)
-		return
-	} else if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "access_token", err) != nil {
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func answerRedisError(w http.ResponseWriter, description string, err error) error {
+	if errors.Is(err, redis.Nil) {
+		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
+	} else if err != nil {
+		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+	}
+	return err
 }
