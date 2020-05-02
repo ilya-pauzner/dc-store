@@ -8,9 +8,8 @@ import (
 	"errors"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
-	"io/ioutil"
+	"github.com/ilya-pauzner/dc-store/util"
 	"log"
-	"math/rand"
 	"net/http"
 	"strconv"
 )
@@ -45,52 +44,61 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func validate(contents []byte) (bool, error) {
-	answer, err := http.Post("http://auth:8081/validate", "application/json", bytes.NewReader(contents))
+func validateAndAnswer(w http.ResponseWriter, header http.Header) bool {
+	emptyBuffer := make([]byte, 0)
+	emptyReader := bytes.NewReader(emptyBuffer)
+	req, err := http.NewRequest(http.MethodPost, "http://auth:8081/validate", emptyReader)
 	if err != nil {
-		return false, err
+		util.ErrorAsJson(w, err.Error(), http.StatusInternalServerError)
+		return false
+	}
+
+	req.Header = header
+
+	answer, err := http.DefaultClient.Do(req)
+	if err != nil {
+		util.ErrorAsJson(w, err.Error(), http.StatusInternalServerError)
+		return false
 	}
 	if answer.StatusCode != http.StatusOK {
-		return false, nil
+		util.ErrorAsJson(w, "Access denied", http.StatusForbidden)
+		return false
 	}
-	return true, nil
+	return true
+}
+
+func answerRedisError(w http.ResponseWriter, description string, err error) error {
+	if errors.Is(err, redis.Nil) {
+		util.ErrorAsJson(w, "No such key in "+description+" database", http.StatusBadRequest)
+	} else if err != nil {
+		util.ErrorAsJson(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+	}
+	return err
 }
 
 func createStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
 	var stock Stock
-	err = json.Unmarshal(contents, &stock)
+	err := json.NewDecoder(r.Body).Decode(&stock)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		util.ErrorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
 
-	stock.Code = rand.Uint64()
+	stock.Code = util.RandomUint64()
 
-	contents, err = json.Marshal(stock)
+	contents, err := json.Marshal(stock)
 	if err != nil {
-		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
 
 	_, err = stocksClient.Set(strconv.FormatUint(stock.Code, 10), contents, 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
@@ -98,73 +106,42 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllStocks(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
 	keys, err := stocksClient.Keys("*").Result()
 	if err != nil {
-		http.Error(w, "Failed to get keys from database", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to get keys from database", http.StatusInternalServerError)
 		return
 	}
 
 	stocks := make([]Stock, len(keys))
 	for i, key := range keys {
 		contents, err := stocksClient.Get(key).Result()
-		if errors.Is(err, redis.Nil) {
-			http.Error(w, "No such key in database", http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		if answerRedisError(w, "stocks", err) != nil {
 			return
 		}
 
 		var stock Stock
 		er := json.Unmarshal([]byte(contents), &stock)
 		if er != nil {
-			http.Error(w, "Failed to unmarshal data from database", http.StatusInternalServerError)
+			util.ErrorAsJson(w, "Failed to unmarshal data from database", http.StatusInternalServerError)
 			return
 		}
 
 		stocks[i] = stock
 	}
 
-	contents, er := json.Marshal(stocks)
+	er := json.NewEncoder(w).Encode(stocks)
 	if er != nil {
-		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
-
-	_, _ = w.Write(contents)
 }
 
 func modifyStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -173,28 +150,28 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 	codeString := vars["code"]
 	code, err := strconv.ParseUint(codeString, 10, 64)
 	if err != nil {
-		http.Error(w, "Bad stock number", http.StatusBadRequest)
+		util.ErrorAsJson(w, "Bad stock number", http.StatusBadRequest)
 		return
 	}
 
 	var stock Stock
-	err = json.Unmarshal(contents, &stock)
+	err = json.NewDecoder(r.Body).Decode(&stock)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		util.ErrorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
 
 	stock.Code = code
 
-	contents, err = json.Marshal(stock)
+	contents, err := json.Marshal(stock)
 	if err != nil {
-		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
 
 	_, err = stocksClient.Set(codeString, contents, 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
@@ -202,19 +179,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -223,12 +188,7 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 	codeString := vars["code"]
 
 	stock, err := stocksClient.Get(codeString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong stock code", http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	if answerRedisError(w, "stocks", err) != nil {
 		return
 	}
 
@@ -236,19 +196,7 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	ok, err := validate(contents)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "Access denied", http.StatusForbidden)
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -256,19 +204,14 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	codeString := vars["code"]
 
-	_, err = stocksClient.Get(codeString).Result()
-	if errors.Is(err, redis.Nil) {
-		http.Error(w, "Wrong stock_code", http.StatusForbidden)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+	_, err := stocksClient.Get(codeString).Result()
+	if answerRedisError(w, "stocks", err) != nil {
 		return
 	}
 
 	_, err = stocksClient.Del(codeString).Result()
 	if err != nil {
-		http.Error(w, "Failed to delete from database", http.StatusInternalServerError)
+		util.ErrorAsJson(w, "Failed to delete from database", http.StatusInternalServerError)
 		return
 	}
 }

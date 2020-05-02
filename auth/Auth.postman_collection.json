@@ -19,7 +19,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n\t\"login\": \"a\",\n\t\"password\": \"b\"\n}",
+					"raw": "{\n\t\"email\": \"a\",\n\t\"password\": \"b\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -53,7 +53,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n\t\"login\": \"a\",\n\t\"password\" : \"b\"\n}",
+					"raw": "{\n    \"email\": \"a\",\n    \"password\": \"b\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -83,17 +83,13 @@
 						"name": "Content-Type",
 						"value": "application/json",
 						"type": "text"
+					},
+					{
+						"key": "refresh_token",
+						"value": "171723351734192437",
+						"type": "text"
 					}
 				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"access_token\": \"6334824724549167320\",\n    \"refresh_token\": \"6334824724549167320\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
 					"raw": "localhost:8081/refresh",
 					"host": [
@@ -117,17 +113,13 @@
 						"name": "Content-Type",
 						"value": "application/json",
 						"type": "text"
+					},
+					{
+						"key": "access_token",
+						"value": "28798320289153479",
+						"type": "text"
 					}
 				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n\t\"access_token\": \"6334824724549167320\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
 					"raw": "localhost:8081/validate",
 					"host": [
