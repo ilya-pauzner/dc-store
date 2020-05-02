@@ -1,0 +1,137 @@
+{
+	"info": {
+		"_postman_id": "c3e81051-27a9-48ef-b3b9-c9178417fecb",
+		"name": "Stocks",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Modify Stock",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"name\": \"pupa\",\n\t\"categories\": [\"hello\", \"goodbye\"]\n}"
+				},
+				"url": {
+					"raw": "localhost:8080/stocks",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"stocks"
+					]
+				},
+				"description": "get all stocks"
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Stocks",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/stocks/11998794077335055257",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"stocks",
+						"11998794077335055257"
+					]
+				},
+				"description": "Get All Stocks"
+			},
+			"response": []
+		},
+		{
+			"name": "Get Stock",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8080/stocks/11998794077335055257",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"stocks",
+						"11998794077335055257"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Modify Stock",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"Name\":\"shlyapa\",\"Code\":11998794077335055257,\"Categories\":[\"hello\",\"goodbye\"]}"
+				},
+				"url": {
+					"raw": "localhost:8080/stocks/11998794077335055257",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"stocks",
+						"11998794077335055257"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Stock",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"access_token\": \"6334824724549167320\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "localhost:8080/stocks/11998794077335055257",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"stocks",
+						"11998794077335055257"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}
