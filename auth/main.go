@@ -279,9 +279,10 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("access_token", accessTokenString)
-	w.Header().Set("refresh_token", refreshTokenString)
-	_ = w.Header().Write(w)
+	tokens := make(map[string]string)
+	tokens["access_token"] = accessTokenString
+	tokens["refresh_token"] = refreshTokenString
+	_ = json.NewEncoder(w).Encode(tokens)
 }
 
 func validate(w http.ResponseWriter, r *http.Request) {
