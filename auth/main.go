@@ -191,6 +191,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	if activated != "1" {
 		util.ErrorAsJson(w, "Email-password pair not activated yet", http.StatusForbidden)
+		return
 	}
 
 	password, ok := data["password"]
