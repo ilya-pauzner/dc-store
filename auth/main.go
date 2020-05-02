@@ -80,11 +80,18 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8081", r))
 }
 
+func errorAsJson(w http.ResponseWriter, errorString string, code int) {
+	errorMap := make(map[string]string)
+	errorMap["error"] = errorString
+	errorJson, _ := json.Marshal(errorMap)
+	http.Error(w, string(errorJson), code)
+}
+
 func answerRedisError(w http.ResponseWriter, description string, err error) error {
 	if errors.Is(err, redis.Nil) {
-		http.Error(w, "No such key in "+description+" database", http.StatusBadRequest)
+		errorAsJson(w, "No such key in "+description+" database", http.StatusBadRequest)
 	} else if err != nil {
-		http.Error(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
 	}
 	return err
 }
@@ -111,15 +118,14 @@ func activate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if value != "0" {
-		log.Print(value)
-		http.Error(w, "Activation link already used", http.StatusBadRequest)
+		errorAsJson(w, "Activation link already used", http.StatusBadRequest)
 		return
 	}
 	value = "1"
 
 	_, err = linkToClickedClient.Set(codeString, value, 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 }
@@ -128,28 +134,28 @@ func register(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
 
 	email, ok := data["email"]
 	if !ok {
-		http.Error(w, "Failed to get email from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get email from request body", http.StatusBadRequest)
 		return
 	}
 
 	_, err = passwordsClient.Get(email).Result()
 	if err == nil {
-		http.Error(w, "email already exists", http.StatusBadRequest)
+		errorAsJson(w, "email already exists", http.StatusBadRequest)
 		return
 	} else if !errors.Is(err, redis.Nil) {
-		http.Error(w, "Failed to get from database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to get from database", http.StatusInternalServerError)
 		return
 	}
 
 	password, ok := data["password"]
 	if !ok {
-		http.Error(w, "Failed to get password from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get password from request body", http.StatusBadRequest)
 		return
 	}
 
@@ -158,26 +164,26 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 	_, err = passwordsClient.Set(email, hashedPassword, 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
 	linkCode := strconv.FormatUint(randomUint64(), 10)
 	_, err = linkToClickedClient.Set(linkCode, "0", 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 	_, err = emailToLinkClient.Set(email, linkCode, 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
 	link := fmt.Sprintf("localhost:8081/links/%s", linkCode)
 	err = sendMessageToQueue([]byte(link))
 	if err != nil {
-		http.Error(w, "Failed to send message", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to send message", http.StatusInternalServerError)
 		return
 	}
 
@@ -188,13 +194,13 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
 
 	email, ok := data["email"]
 	if !ok {
-		http.Error(w, "Failed to get email from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get email from request body", http.StatusBadRequest)
 		return
 	}
 
@@ -208,12 +214,12 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if activated != "1" {
-		http.Error(w, "Email-password pair not activated yet", http.StatusForbidden)
+		errorAsJson(w, "Email-password pair not activated yet", http.StatusForbidden)
 	}
 
 	password, ok := data["password"]
 	if !ok {
-		http.Error(w, "Failed to get password from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get password from request body", http.StatusBadRequest)
 		return
 	}
 
@@ -225,7 +231,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !bytes.Equal(hashedPassword, []byte(hashedPasswordInDataBase)) {
-		http.Error(w, "Wrong password", http.StatusForbidden)
+		errorAsJson(w, "Wrong password", http.StatusForbidden)
 		return
 	}
 
@@ -236,7 +242,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	tokens["refresh_token"] = refreshTokenString
 	_, err = refreshTokensClient.Set(refreshTokenString, email, 0).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
@@ -245,13 +251,13 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	tokens["access_token"] = accessTokenString
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(tokens)
 	if err != nil {
-		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
 }
@@ -260,13 +266,13 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
 
 	accessTokenString, ok := data["access_token"]
 	if !ok {
-		http.Error(w, "Failed to get access_token from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get access_token from request body", http.StatusBadRequest)
 		return
 	}
 
@@ -277,11 +283,11 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 
 	refreshTokenString, ok := data["refresh_token"]
 	if !ok {
-		http.Error(w, "Failed to get refresh_token from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get refresh_token from request body", http.StatusBadRequest)
 		return
 	}
 	if refreshTokenString != refreshTokenFromDb {
-		http.Error(w, "access_token and refresh_token do not form a pair", http.StatusForbidden)
+		errorAsJson(w, "access_token and refresh_token do not form a pair", http.StatusForbidden)
 	}
 
 	_, err = refreshTokensClient.Get(refreshTokenString).Result()
@@ -296,13 +302,13 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	tokens["access_token"] = accessTokenString
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
-		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(tokens)
 	if err != nil {
-		http.Error(w, "Failed to marshal response body", http.StatusInternalServerError)
+		errorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
 	}
 }
@@ -311,13 +317,13 @@ func validate(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
 
 	accessTokenString, ok := data["access_token"]
 	if !ok {
-		http.Error(w, "Failed to get access_token from request body", http.StatusBadRequest)
+		errorAsJson(w, "Failed to get access_token from request body", http.StatusBadRequest)
 		return
 	}
 
