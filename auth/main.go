@@ -216,15 +216,17 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	refreshToken := util.RandomUint64()
 	refreshTokenString := strconv.FormatUint(refreshToken, 10)
 	tokens["refresh_token"] = refreshTokenString
-	_, err = refreshTokensClient.Set(refreshTokenString, email, 0).Result()
+
+	accessToken := util.RandomUint64()
+	accessTokenString := strconv.FormatUint(accessToken, 10)
+	tokens["access_token"] = accessTokenString
+
+	_, err = refreshTokensClient.Set(refreshTokenString, accessTokenString, 0).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
-	accessToken := util.RandomUint64()
-	accessTokenString := strconv.FormatUint(accessToken, 10)
-	tokens["access_token"] = accessTokenString
 	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
@@ -239,54 +241,46 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func refresh(w http.ResponseWriter, r *http.Request) {
-	var data map[string]string
-	err := json.NewDecoder(r.Body).Decode(&data)
-	if err != nil {
-		util.ErrorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
+	oldRefreshToken := r.Header.Get("refresh_token")
+	if oldRefreshToken == "" {
+		util.ErrorAsJson(w, "Failed to get access_token from request headers", http.StatusBadRequest)
 		return
 	}
 
-	accessTokenString, ok := data["access_token"]
-	if !ok {
-		util.ErrorAsJson(w, "Failed to get access_token from request body", http.StatusBadRequest)
-		return
-	}
-
-	refreshTokenFromDb, err := accessTokensClient.Get(accessTokenString).Result()
-	if util.AnswerRedisError(w, "access_token", err) != nil {
-		return
-	}
-
-	refreshTokenString, ok := data["refresh_token"]
-	if !ok {
-		util.ErrorAsJson(w, "Failed to get refresh_token from request body", http.StatusBadRequest)
-		return
-	}
-	if refreshTokenString != refreshTokenFromDb {
-		util.ErrorAsJson(w, "access_token and refresh_token do not form a pair", http.StatusForbidden)
-	}
-
-	_, err = refreshTokensClient.Get(refreshTokenString).Result()
+	oldAccessToken, err := refreshTokensClient.Get(oldRefreshToken).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
 
-	tokens := make(map[string]string)
+	_, err = accessTokensClient.Del(oldAccessToken).Result()
+	if util.AnswerRedisError(w, "access_token", err) != nil {
+		return
+	}
+
+	_, err = refreshTokensClient.Del(oldRefreshToken).Result()
+	if util.AnswerRedisError(w, "refresh_token", err) != nil {
+		return
+	}
+
+	refreshToken := util.RandomUint64()
+	refreshTokenString := strconv.FormatUint(refreshToken, 10)
 
 	accessToken := util.RandomUint64()
-	accessTokenString = strconv.FormatUint(accessToken, 10)
-	tokens["access_token"] = accessTokenString
-	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
-	if err != nil {
-		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
+	accessTokenString := strconv.FormatUint(accessToken, 10)
+
+	_, err = refreshTokensClient.Set(refreshTokenString, accessTokenString, 0).Result()
+	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(tokens)
-	if err != nil {
-		util.ErrorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
+	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
+	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
 	}
+
+	w.Header().Set("access_token", accessTokenString)
+	w.Header().Set("refresh_token", refreshTokenString)
+	_ = w.Header().Write(w)
 }
 
 func validate(w http.ResponseWriter, r *http.Request) {
