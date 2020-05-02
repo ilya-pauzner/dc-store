@@ -314,20 +314,13 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func validate(w http.ResponseWriter, r *http.Request) {
-	var data map[string]string
-	err := json.NewDecoder(r.Body).Decode(&data)
-	if err != nil {
-		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
+	accessTokenString := r.Header.Get("access_token")
+	if accessTokenString == "" {
+		errorAsJson(w, "Failed to get access_token from request headers", http.StatusBadRequest)
 		return
 	}
 
-	accessTokenString, ok := data["access_token"]
-	if !ok {
-		errorAsJson(w, "Failed to get access_token from request body", http.StatusBadRequest)
-		return
-	}
-
-	_, err = accessTokensClient.Get(accessTokenString).Result()
+	_, err := accessTokensClient.Get(accessTokenString).Result()
 	if answerRedisError(w, "access_token", err) != nil {
 		return
 	}

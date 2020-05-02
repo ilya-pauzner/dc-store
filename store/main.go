@@ -9,7 +9,6 @@ import (
 	"errors"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/big"
@@ -60,8 +59,18 @@ func errorAsJson(w http.ResponseWriter, errorString string, code int) {
 	http.Error(w, string(errorJson), code)
 }
 
-func validateAndAnswer(w http.ResponseWriter, contents []byte) bool {
-	answer, err := http.Post("http://auth:8081/validate", "application/json", bytes.NewReader(contents))
+func validateAndAnswer(w http.ResponseWriter, header http.Header) bool {
+	emptyBuffer := make([]byte, 0)
+	emptyReader := bytes.NewReader(emptyBuffer)
+	req, err := http.NewRequest(http.MethodPost, "http://auth:8081/validate", emptyReader)
+	if err != nil {
+		errorAsJson(w, err.Error(), http.StatusInternalServerError)
+		return false
+	}
+
+	req.Header = header
+
+	answer, err := http.DefaultClient.Do(req)
 	if err != nil {
 		errorAsJson(w, err.Error(), http.StatusInternalServerError)
 		return false
@@ -83,18 +92,12 @@ func answerRedisError(w http.ResponseWriter, description string, err error) erro
 }
 
 func createStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		errorAsJson(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	if !validateAndAnswer(w, contents) {
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
 	var stock Stock
-	err = json.Unmarshal(contents, &stock)
+	err := json.NewDecoder(r.Body).Decode(&stock)
 	if err != nil {
 		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
@@ -102,7 +105,7 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 
 	stock.Code = randomUint64()
 
-	contents, err = json.Marshal(stock)
+	contents, err := json.Marshal(stock)
 	if err != nil {
 		errorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
@@ -118,13 +121,7 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllStocks(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		errorAsJson(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	if !validateAndAnswer(w, contents) {
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -159,13 +156,7 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 }
 
 func modifyStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		errorAsJson(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	if !validateAndAnswer(w, contents) {
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -179,7 +170,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var stock Stock
-	err = json.Unmarshal(contents, &stock)
+	err = json.NewDecoder(r.Body).Decode(&stock)
 	if err != nil {
 		errorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
@@ -187,7 +178,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 
 	stock.Code = code
 
-	contents, err = json.Marshal(stock)
+	contents, err := json.Marshal(stock)
 	if err != nil {
 		errorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
 		return
@@ -203,13 +194,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		errorAsJson(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	if !validateAndAnswer(w, contents) {
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -226,13 +211,7 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteStock(w http.ResponseWriter, r *http.Request) {
-	contents, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		errorAsJson(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	if !validateAndAnswer(w, contents) {
+	if !validateAndAnswer(w, r.Header) {
 		return
 	}
 
@@ -240,7 +219,7 @@ func deleteStock(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	codeString := vars["code"]
 
-	_, err = stocksClient.Get(codeString).Result()
+	_, err := stocksClient.Get(codeString).Result()
 	if answerRedisError(w, "stocks", err) != nil {
 		return
 	}
