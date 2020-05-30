@@ -3,19 +3,35 @@
 package main
 
 import (
-	"bufio"
+	"encoding/csv"
+	"encoding/json"
+	"errors"
+	"github.com/go-redis/redis/v7"
 	"github.com/streadway/amqp"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
+
+type Stock struct {
+	Name       string   `json:"name"`
+	Code       uint64   `json:"code,omitempty"`
+	Categories []string `json:"categories"`
+}
 
 var (
 	ch       *amqp.Channel
 	csvQueue amqp.Queue
+
+	stockClient *redis.Client
 )
 
 func main() {
+	stockClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 0})
+
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		log.Fatalf("%s: %s", "Failed to connect to RabbitMQ", err)
@@ -81,9 +97,55 @@ func processMessage(message []byte) error {
 		return err
 	}
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		log.Print(scanner.Text())
+	reader := csv.NewReader(f)
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		} else {
+			log.Print(record)
+		}
+
+		if len(record) != 3 {
+			return errors.New("format should be code,name,cat1&cat2&cat3")
+		}
+
+		codeString := record[0]
+		name := record[1]
+		categoriesString := record[2]
+
+		code, err := strconv.ParseUint(codeString, 10, 64)
+		if err != nil {
+			return err
+		}
+
+		stock := Stock{
+			Name:       name,
+			Code:       code,
+			Categories: strings.Split(categoriesString, "&"),
+		}
+
+		contents, err := json.Marshal(stock)
+		if err != nil {
+			return err
+		}
+
+		_, err = stockClient.Get(codeString).Result()
+		if err == nil {
+			log.Printf("stock with %s code already exists", codeString)
+			continue
+		} else if !errors.Is(err, redis.Nil) {
+			return err
+		}
+
+		_, err = stockClient.Set(codeString, contents, 0).Result()
+		if err != nil {
+			return err
+		}
+
+		log.Printf("successfully written stock %v", string(contents))
 	}
 
 	err = os.Remove(filename)
