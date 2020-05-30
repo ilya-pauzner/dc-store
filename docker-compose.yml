@@ -34,7 +34,14 @@ services:
       - 8083:8083
     links:
       - rabbitmq
+    volumes:
+      - data-volume:/tmp
   csv-consumer:
     build: csv-consumer
     links:
       - rabbitmq
+    volumes:
+      - data-volume:/tmp
+
+volumes:
+  data-volume:

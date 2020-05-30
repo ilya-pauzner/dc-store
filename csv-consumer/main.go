@@ -3,8 +3,11 @@
 package main
 
 import (
+	"bufio"
 	"github.com/streadway/amqp"
 	"log"
+	"os"
+	"path/filepath"
 )
 
 var (
@@ -54,9 +57,9 @@ func main() {
 
 	go func() {
 		for d := range msgs {
-			err := sendMessageToConsole([]byte("Received a message: " + string(d.Body)))
+			err := processMessage(d.Body)
 			if err != nil {
-				log.Printf("%s: %s", "Failed to send message to console", err)
+				log.Printf("%s: %s", "Failed to process message", err)
 				err = sendMessageToQueue(d.Body)
 				if err != nil {
 					log.Printf("%s: %s", "Failed to send message back to queue", err)
@@ -69,8 +72,25 @@ func main() {
 	<-forever
 }
 
-func sendMessageToConsole(message []byte) error {
-	log.Println(string(message))
+func processMessage(message []byte) error {
+	log.Printf("Got from queue: %s\n", message)
+
+	filename := filepath.Join("/tmp", string(message))
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		log.Print(scanner.Text())
+	}
+
+	err = os.Remove(filename)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
