@@ -1,6 +1,6 @@
 FROM    golang:latest
 WORKDIR /Users/ilpauzner/go/src
-#/dc-store/reader
+#/dc-store/csv-consumer
 COPY    . .
 RUN go build main.go
 RUN chmod 755 wait-for-it.sh

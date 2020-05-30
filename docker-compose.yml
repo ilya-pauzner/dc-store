@@ -2,21 +2,21 @@ version: '3'
 
 services:
   store:
-    build: ./store
+    build: store
     ports:
       - 8080:8080
     links:
       - db
       - auth
   auth:
-    build: ./auth
+    build: auth
     ports:
       - 8081:8081
     links:
       - db
       - rabbitmq
-  sender:
-    build: ./sender
+  email-consumer:
+    build: email-consumer
     links:
       - rabbitmq
   db:
@@ -28,13 +28,13 @@ services:
     ports:
       - 5672:5672
       - 15672:15672
-  reader:
-    build: ./reader
+  csv-producer:
+    build: csv-producer
     ports:
       - 8083:8083
     links:
       - rabbitmq
-  writer:
-    build: ./writer
+  csv-consumer:
+    build: csv-consumer
     links:
       - rabbitmq

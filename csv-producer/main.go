@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	ch *amqp.Channel
-	q  amqp.Queue
+	ch       *amqp.Channel
+	csvQueue amqp.Queue
 )
 
 func main() {
@@ -32,7 +32,7 @@ func main() {
 	}
 	defer func() { _ = ch.Close() }()
 
-	q, err = ch.QueueDeclare(
+	csvQueue, err = ch.QueueDeclare(
 		"csv", // name
 		false, // durable
 		false, // delete when unused
@@ -53,10 +53,10 @@ func main() {
 
 func sendMessageToQueue(message []byte) error {
 	return ch.Publish(
-		"",     // exchange
-		q.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
+		"",            // exchange
+		csvQueue.Name, // routing key
+		false,         // mandatory
+		false,         // immediate
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        message,
