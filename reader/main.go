@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"github.com/gorilla/mux"
 	"github.com/ilya-pauzner/dc-store/util"
 	"github.com/streadway/amqp"
@@ -63,12 +64,6 @@ func sendMessageToQueue(message []byte) error {
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(1 << 20)
-	if err != nil {
-		util.ErrorAsJson(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		util.ErrorAsJson(w, err.Error(), http.StatusBadRequest)
@@ -84,11 +79,14 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("File name %s\n", header.Filename)
 
-	newFile, err := os.Create(strconv.FormatUint(util.RandomUint64(), 10))
+	newFileName := strconv.FormatUint(util.RandomUint64(), 10)
+	newFile, err := os.Create(newFileName)
 	if err != nil {
 		util.ErrorAsJson(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	defer func() { _ = newFile.Close() }()
 
 	// Copy the file data to my buffer
 	_, err = io.Copy(newFile, file)
@@ -96,4 +94,25 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		util.ErrorAsJson(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	go func() {
+		_ = toQueue(newFileName)
+	}()
+}
+
+func toQueue(newFileName string) error {
+	f, err := os.Open(newFileName)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		err = sendMessageToQueue(scanner.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
