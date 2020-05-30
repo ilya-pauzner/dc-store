@@ -1,4 +1,5 @@
 version: '3'
+
 services:
   store:
     build: ./store
@@ -29,3 +30,14 @@ services:
     ports:
       - 5672:5672
       - 15672:15672
+  reader:
+    build: ./reader
+    ports:
+      - 8083:8083
+    links:
+      - rabbitmq
+    volumes:
+      - data-volume:/tmp
+
+volumes:
+  data-volume:
