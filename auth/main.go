@@ -25,8 +25,8 @@ var (
 	linkToClickedClient *redis.Client
 	emailToLinkClient   *redis.Client
 
-	ch *amqp.Channel
-	q  amqp.Queue
+	ch         *amqp.Channel
+	emailQueue amqp.Queue
 )
 
 func main() {
@@ -48,8 +48,8 @@ func main() {
 	}
 	defer func() { _ = ch.Close() }()
 
-	q, err = ch.QueueDeclare(
-		"hello", // name
+	emailQueue, err = ch.QueueDeclare(
+		"email", // name
 		false,   // durable
 		false,   // delete when unused
 		false,   // exclusive
@@ -74,10 +74,10 @@ func main() {
 
 func sendMessageToQueue(message []byte) error {
 	return ch.Publish(
-		"",     // exchange
-		q.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
+		"",              // exchange
+		emailQueue.Name, // routing key
+		false,           // mandatory
+		false,           // immediate
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        message,

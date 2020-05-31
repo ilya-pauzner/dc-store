@@ -1,0 +1,41 @@
+{
+  "info": {
+    "_postman_id": "3aac8aef-a202-4f7d-a6e1-7b4c5ece3f74",
+    "name": "UploadCsv",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "upload file",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "/Users/ilpauzner/go/src/dc-store/example.csv"
+            }
+          ]
+        },
+        "url": {
+          "raw": "localhost:8083/upload",
+          "host": [
+            "localhost"
+          ],
+          "port": "8083",
+          "path": [
+            "upload"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "protocolProfileBehavior": {}
+}
