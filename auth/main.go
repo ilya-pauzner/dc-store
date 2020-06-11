@@ -136,7 +136,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := sha256.New()
-	hashedPassword := hash.Sum([]byte(password))
+	hashedPassword := hash.Sum([]byte(email + password))
 
 	_, err = passwordsClient.Set(email, hashedPassword, 0).Result()
 	if err != nil {
@@ -201,7 +201,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := sha256.New()
-	hashedPassword := hash.Sum([]byte(password))
+	hashedPassword := hash.Sum([]byte(email + password))
 
 	hashedPasswordInDataBase, err := passwordsClient.Get(email).Result()
 	if util.AnswerRedisError(w, "registered emails", err) != nil {
