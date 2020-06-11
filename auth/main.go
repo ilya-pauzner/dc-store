@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -11,30 +12,91 @@ import (
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"github.com/ilya-pauzner/dc-store/util"
+	pb "github.com/ilya-pauzner/dc-store/validator"
 	"github.com/streadway/amqp"
+	"google.golang.org/grpc"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
 )
 
+type server struct {
+	pb.UnimplementedValidatorServer
+}
+
+func (s *server) ValidateToken(_ context.Context, req *pb.ValidateRequest) (*pb.ValidateReply, error) {
+	log.Printf("Received: %v", req.Token)
+
+	_, err := accessTokenToRefreshTokenClient.Get(req.Token).Result()
+	if err != nil {
+		errorString, code := util.RedisErrorString("tokens", err)
+		if code == http.StatusBadRequest {
+			return &pb.ValidateReply{Success: false}, nil
+		} else {
+			return &pb.ValidateReply{Success: false}, errors.New(errorString)
+		}
+	}
+
+	if req.Write {
+		_, err := accessTokenToAdminClient.Get(req.Token).Result()
+		if err != nil {
+			errorString, code := util.RedisErrorString("tokens", err)
+			if code == http.StatusBadRequest {
+				return &pb.ValidateReply{Success: false}, nil
+			} else {
+				return &pb.ValidateReply{Success: false}, errors.New(errorString)
+			}
+		}
+	}
+
+	return &pb.ValidateReply{Success: true}, nil
+}
+
+func startServer() {
+	lis, err := net.Listen("tcp", ":8082")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterValidatorServer(s, &server{})
+	log.Fatal(s.Serve(lis))
+}
+
 var (
-	passwordsClient     *redis.Client
-	accessTokensClient  *redis.Client
-	refreshTokensClient *redis.Client
+	emailToPasswordClient           *redis.Client
+	accessTokenToRefreshTokenClient *redis.Client
+	refreshTokenToAccessTokenClient *redis.Client
+
 	linkToClickedClient *redis.Client
 	emailToLinkClient   *redis.Client
+
+	emailToAdminClient        *redis.Client
+	accessTokenToAdminClient  *redis.Client
+	refreshTokenToAdminClient *redis.Client
 
 	ch         *amqp.Channel
 	emailQueue amqp.Queue
 )
 
 func main() {
-	passwordsClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
-	accessTokensClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 2})
-	refreshTokensClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 3})
+	emailToPasswordClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
+	accessTokenToRefreshTokenClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 2})
+	refreshTokenToAccessTokenClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 3})
+
 	linkToClickedClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 4})
 	emailToLinkClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 5})
+
+	emailToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 6})
+	accessTokenToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 7})
+	refreshTokenToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 8})
+
+	// creating admin
+	_ = accessTokenToRefreshTokenClient.Set("root", "toor", 0)
+	_ = accessTokenToAdminClient.Set("root", "1", 0)
+	_ = refreshTokenToAccessTokenClient.Set("toor", "root", 0)
+	_ = refreshTokenToAdminClient.Set("toor", "1", 0)
 
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
@@ -60,6 +122,8 @@ func main() {
 		log.Fatalf("%s: %s", "Failed to declare a queue", err)
 	}
 
+	go startServer()
+
 	r := mux.NewRouter()
 
 	r.HandleFunc("/links/{code:[0-9]+}", activate)
@@ -67,7 +131,8 @@ func main() {
 	r.HandleFunc("/register", register).Methods("POST")
 	r.HandleFunc("/authorize", authorize).Methods("POST")
 	r.HandleFunc("/refresh", refresh).Methods("POST")
-	r.HandleFunc("/validate", validate).Methods("POST")
+
+	r.HandleFunc("/promote", promote).Methods("POST")
 
 	log.Fatal(http.ListenAndServe(":8081", r))
 }
@@ -120,7 +185,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = passwordsClient.Get(email).Result()
+	_, err = emailToPasswordClient.Get(email).Result()
 	if err == nil {
 		util.ErrorAsJson(w, "email already exists", http.StatusBadRequest)
 		return
@@ -136,9 +201,9 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := sha256.New()
-	hashedPassword := hash.Sum([]byte(password))
+	hashedPassword := hash.Sum([]byte(email + password))
 
-	_, err = passwordsClient.Set(email, hashedPassword, 0).Result()
+	_, err = emailToPasswordClient.Set(email, hashedPassword, 0).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
@@ -201,9 +266,9 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := sha256.New()
-	hashedPassword := hash.Sum([]byte(password))
+	hashedPassword := hash.Sum([]byte(email + password))
 
-	hashedPasswordInDataBase, err := passwordsClient.Get(email).Result()
+	hashedPasswordInDataBase, err := emailToPasswordClient.Get(email).Result()
 	if util.AnswerRedisError(w, "registered emails", err) != nil {
 		return
 	}
@@ -222,16 +287,37 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	accessTokenString := strconv.FormatUint(accessToken, 10)
 	tokens["access_token"] = accessTokenString
 
-	_, err = refreshTokensClient.Set(refreshTokenString, accessTokenString, 0).Result()
+	_, err = refreshTokenToAccessTokenClient.Set(refreshTokenString, accessTokenString, 0).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
-	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
+	_, err = accessTokenToRefreshTokenClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
+	}
+
+	_, err = emailToAdminClient.Get(email).Result()
+	if err == nil {
+		// is admin
+		_, err = accessTokenToAdminClient.Set(accessTokenString, "1", time.Hour).Result()
+		if err != nil {
+			util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
+			return
+		}
+
+		_, err = refreshTokenToAdminClient.Set(refreshTokenString, "1", 0).Result()
+		if err != nil {
+			util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
+			return
+		}
+	} else if err == redis.Nil {
+		// is not admin
+	} else {
+		// redis failed
+		_ = util.AnswerRedisError(w, "admins", err)
 	}
 
 	err = json.NewEncoder(w).Encode(tokens)
@@ -248,19 +334,43 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldAccessToken, err := refreshTokensClient.Get(oldRefreshToken).Result()
+	oldAccessToken, err := refreshTokenToAccessTokenClient.Get(oldRefreshToken).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
 
-	_, err = accessTokensClient.Del(oldAccessToken).Result()
+	var admin = false
+	_, err = refreshTokenToAdminClient.Get(oldRefreshToken).Result()
+	if err == nil {
+		// is admin
+		admin = true
+	} else if err == redis.Nil {
+		// is not admin
+	} else {
+		// redis failed
+		_ = util.AnswerRedisError(w, "admins", err)
+	}
+
+	_, err = accessTokenToRefreshTokenClient.Del(oldAccessToken).Result()
 	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
 	}
+	if admin {
+		_, err = accessTokenToAdminClient.Del(oldAccessToken).Result()
+		if util.AnswerRedisError(w, "access_token", err) != nil {
+			return
+		}
+	}
 
-	_, err = refreshTokensClient.Del(oldRefreshToken).Result()
+	_, err = refreshTokenToAccessTokenClient.Del(oldRefreshToken).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
+	}
+	if admin {
+		_, err = refreshTokenToAdminClient.Del(oldRefreshToken).Result()
+		if util.AnswerRedisError(w, "refresh_token", err) != nil {
+			return
+		}
 	}
 
 	refreshToken := util.RandomUint64()
@@ -269,14 +379,26 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	accessToken := util.RandomUint64()
 	accessTokenString := strconv.FormatUint(accessToken, 10)
 
-	_, err = refreshTokensClient.Set(refreshTokenString, accessTokenString, 0).Result()
+	_, err = refreshTokenToAccessTokenClient.Set(refreshTokenString, accessTokenString, 0).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
+	if admin {
+		_, err = refreshTokenToAdminClient.Set(refreshTokenString, "1", 0).Result()
+		if util.AnswerRedisError(w, "refresh_token", err) != nil {
+			return
+		}
+	}
 
-	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
+	_, err = accessTokenToRefreshTokenClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
+	}
+	if admin {
+		_, err = accessTokenToAdminClient.Set(accessTokenString, "1", time.Hour).Result()
+		if util.AnswerRedisError(w, "access_token", err) != nil {
+			return
+		}
 	}
 
 	tokens := make(map[string]string)
@@ -285,17 +407,37 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(tokens)
 }
 
-func validate(w http.ResponseWriter, r *http.Request) {
-	accessTokenString := r.Header.Get("access_token")
-	if accessTokenString == "" {
+func promote(w http.ResponseWriter, r *http.Request) {
+	var data map[string]string
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		util.ErrorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
+	}
+
+	email, ok := data["email"]
+	if !ok {
+		util.ErrorAsJson(w, "Failed to get email from request body", http.StatusBadRequest)
+		return
+	}
+
+	accessToken := r.Header.Get("access_token")
+	if accessToken == "" {
 		util.ErrorAsJson(w, "Failed to get access_token from request headers", http.StatusBadRequest)
 		return
 	}
 
-	_, err := accessTokensClient.Get(accessTokenString).Result()
-	if util.AnswerRedisError(w, "access_token", err) != nil {
+	_, err = accessTokenToAdminClient.Get(accessToken).Result()
+	if err == nil {
+		// is admin
+		emailToAdminClient.Set(email, "1", 0)
+	} else if err == redis.Nil {
+		// is not admin
+		util.ErrorAsJson(w, "You are not admin", http.StatusForbidden)
+		return
+	} else {
+		// redis failed
+		_ = util.AnswerRedisError(w, "admins", err)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
 }
