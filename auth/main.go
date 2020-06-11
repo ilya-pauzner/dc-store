@@ -114,6 +114,8 @@ func main() {
 	r.HandleFunc("/authorize", authorize).Methods("POST")
 	r.HandleFunc("/refresh", refresh).Methods("POST")
 
+	r.HandleFunc("/promote", promote).Methods("POST")
+
 	log.Fatal(http.ListenAndServe(":8081", r))
 }
 
@@ -385,4 +387,39 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	tokens["access_token"] = accessTokenString
 	tokens["refresh_token"] = refreshTokenString
 	_ = json.NewEncoder(w).Encode(tokens)
+}
+
+func promote(w http.ResponseWriter, r *http.Request) {
+	var data map[string]string
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		util.ErrorAsJson(w, "Failed to unmarshal request body", http.StatusBadRequest)
+		return
+	}
+
+	email, ok := data["email"]
+	if !ok {
+		util.ErrorAsJson(w, "Failed to get email from request body", http.StatusBadRequest)
+		return
+	}
+
+	accessToken := r.Header.Get("access_token")
+	if accessToken == "" {
+		util.ErrorAsJson(w, "Failed to get access_token from request headers", http.StatusBadRequest)
+		return
+	}
+
+	_, err = accessTokenToAdminClient.Get(accessToken).Result()
+	if err == nil {
+		// is admin
+		emailToAdminClient.Set(email, "1", 0)
+	} else if err == redis.Nil {
+		// is not admin
+		util.ErrorAsJson(w, "You are not admin", http.StatusForbidden)
+		return
+	} else {
+		// redis failed
+		_ = util.AnswerRedisError(w, "admins", err)
+		return
+	}
 }
