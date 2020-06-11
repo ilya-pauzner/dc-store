@@ -29,7 +29,7 @@ type server struct {
 func (s *server) ValidateToken(_ context.Context, req *pb.ValidateRequest) (*pb.ValidateReply, error) {
 	log.Printf("Received: %v", req.Token)
 
-	_, err := accessTokensClient.Get(req.Token).Result()
+	_, err := accessTokenToRefreshTokenClient.Get(req.Token).Result()
 	if err != nil {
 		errorString, code := util.RedisErrorString("tokens", err)
 		if code == http.StatusBadRequest {
@@ -53,20 +53,20 @@ func startServer() {
 }
 
 var (
-	passwordsClient     *redis.Client
-	accessTokensClient  *redis.Client
-	refreshTokensClient *redis.Client
-	linkToClickedClient *redis.Client
-	emailToLinkClient   *redis.Client
+	loginToPasswordClient           *redis.Client
+	accessTokenToRefreshTokenClient *redis.Client
+	refreshTokenToAccessTokenClient *redis.Client
+	linkToClickedClient             *redis.Client
+	emailToLinkClient               *redis.Client
 
 	ch         *amqp.Channel
 	emailQueue amqp.Queue
 )
 
 func main() {
-	passwordsClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
-	accessTokensClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 2})
-	refreshTokensClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 3})
+	loginToPasswordClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
+	accessTokenToRefreshTokenClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 2})
+	refreshTokenToAccessTokenClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 3})
 	linkToClickedClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 4})
 	emailToLinkClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 5})
 
@@ -155,7 +155,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = passwordsClient.Get(email).Result()
+	_, err = loginToPasswordClient.Get(email).Result()
 	if err == nil {
 		util.ErrorAsJson(w, "email already exists", http.StatusBadRequest)
 		return
@@ -173,7 +173,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.New()
 	hashedPassword := hash.Sum([]byte(email + password))
 
-	_, err = passwordsClient.Set(email, hashedPassword, 0).Result()
+	_, err = loginToPasswordClient.Set(email, hashedPassword, 0).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
@@ -238,7 +238,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.New()
 	hashedPassword := hash.Sum([]byte(email + password))
 
-	hashedPasswordInDataBase, err := passwordsClient.Get(email).Result()
+	hashedPasswordInDataBase, err := loginToPasswordClient.Get(email).Result()
 	if util.AnswerRedisError(w, "registered emails", err) != nil {
 		return
 	}
@@ -257,13 +257,13 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	accessTokenString := strconv.FormatUint(accessToken, 10)
 	tokens["access_token"] = accessTokenString
 
-	_, err = refreshTokensClient.Set(refreshTokenString, accessTokenString, 0).Result()
+	_, err = refreshTokenToAccessTokenClient.Set(refreshTokenString, accessTokenString, 0).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
 	}
 
-	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
+	_, err = accessTokenToRefreshTokenClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
@@ -283,17 +283,17 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldAccessToken, err := refreshTokensClient.Get(oldRefreshToken).Result()
+	oldAccessToken, err := refreshTokenToAccessTokenClient.Get(oldRefreshToken).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
 
-	_, err = accessTokensClient.Del(oldAccessToken).Result()
+	_, err = accessTokenToRefreshTokenClient.Del(oldAccessToken).Result()
 	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
 	}
 
-	_, err = refreshTokensClient.Del(oldRefreshToken).Result()
+	_, err = refreshTokenToAccessTokenClient.Del(oldRefreshToken).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
@@ -304,12 +304,12 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	accessToken := util.RandomUint64()
 	accessTokenString := strconv.FormatUint(accessToken, 10)
 
-	_, err = refreshTokensClient.Set(refreshTokenString, accessTokenString, 0).Result()
+	_, err = refreshTokenToAccessTokenClient.Set(refreshTokenString, accessTokenString, 0).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
 
-	_, err = accessTokensClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
+	_, err = accessTokenToRefreshTokenClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
 	}
