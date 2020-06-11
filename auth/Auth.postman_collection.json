@@ -104,35 +104,32 @@
 			"response": []
 		},
 		{
-			"name": "Validate",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"name": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					},
-					{
-						"key": "access_token",
-						"value": "28798320289153479",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "localhost:8081/validate",
-					"host": [
-						"localhost"
-					],
-					"port": "8081",
-					"path": [
-						"validate"
-					]
-				}
-			},
-			"response": []
-		}
+      "name": "Promote",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n\t\"email\": \"l@l\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "localhost:8081/promote",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "promote"
+          ]
+        }
+      },
+      "response": []
+    }
 	],
 	"protocolProfileBehavior": {}
 }
