@@ -53,22 +53,32 @@ func startServer() {
 }
 
 var (
-	loginToPasswordClient           *redis.Client
+	emailToPasswordClient           *redis.Client
 	accessTokenToRefreshTokenClient *redis.Client
 	refreshTokenToAccessTokenClient *redis.Client
-	linkToClickedClient             *redis.Client
-	emailToLinkClient               *redis.Client
+
+	linkToClickedClient *redis.Client
+	emailToLinkClient   *redis.Client
+
+	emailToAdminClient        *redis.Client
+	accessTokenToAdminClient  *redis.Client
+	refreshTokenToAdminClient *redis.Client
 
 	ch         *amqp.Channel
 	emailQueue amqp.Queue
 )
 
 func main() {
-	loginToPasswordClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
+	emailToPasswordClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 1})
 	accessTokenToRefreshTokenClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 2})
 	refreshTokenToAccessTokenClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 3})
+
 	linkToClickedClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 4})
 	emailToLinkClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 5})
+
+	emailToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 6})
+	accessTokenToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 7})
+	refreshTokenToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 8})
 
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
@@ -155,7 +165,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = loginToPasswordClient.Get(email).Result()
+	_, err = emailToPasswordClient.Get(email).Result()
 	if err == nil {
 		util.ErrorAsJson(w, "email already exists", http.StatusBadRequest)
 		return
@@ -173,7 +183,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.New()
 	hashedPassword := hash.Sum([]byte(email + password))
 
-	_, err = loginToPasswordClient.Set(email, hashedPassword, 0).Result()
+	_, err = emailToPasswordClient.Set(email, hashedPassword, 0).Result()
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
 		return
@@ -238,7 +248,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.New()
 	hashedPassword := hash.Sum([]byte(email + password))
 
-	hashedPasswordInDataBase, err := loginToPasswordClient.Get(email).Result()
+	hashedPasswordInDataBase, err := emailToPasswordClient.Get(email).Result()
 	if util.AnswerRedisError(w, "registered emails", err) != nil {
 		return
 	}
@@ -269,6 +279,27 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = emailToAdminClient.Get(email).Result()
+	if err == nil {
+		// is admin
+		_, err = accessTokenToAdminClient.Set(accessTokenString, "1", time.Hour).Result()
+		if err != nil {
+			util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
+			return
+		}
+
+		_, err = refreshTokenToAdminClient.Set(refreshTokenString, "1", 0).Result()
+		if err != nil {
+			util.ErrorAsJson(w, "Failed to update database", http.StatusInternalServerError)
+			return
+		}
+	} else if err == redis.Nil {
+		// is not admin
+	} else {
+		// redis failed
+		_ = util.AnswerRedisError(w, "admins", err)
+	}
+
 	err = json.NewEncoder(w).Encode(tokens)
 	if err != nil {
 		util.ErrorAsJson(w, "Failed to marshal response body", http.StatusInternalServerError)
@@ -288,14 +319,38 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var admin = false
+	_, err = refreshTokenToAdminClient.Get(oldRefreshToken).Result()
+	if err == nil {
+		// is admin
+		admin = true
+	} else if err == redis.Nil {
+		// is not admin
+	} else {
+		// redis failed
+		_ = util.AnswerRedisError(w, "admins", err)
+	}
+
 	_, err = accessTokenToRefreshTokenClient.Del(oldAccessToken).Result()
 	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
+	}
+	if admin {
+		_, err = accessTokenToAdminClient.Del(oldAccessToken).Result()
+		if util.AnswerRedisError(w, "access_token", err) != nil {
+			return
+		}
 	}
 
 	_, err = refreshTokenToAccessTokenClient.Del(oldRefreshToken).Result()
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
+	}
+	if admin {
+		_, err = refreshTokenToAdminClient.Del(oldRefreshToken).Result()
+		if util.AnswerRedisError(w, "refresh_token", err) != nil {
+			return
+		}
 	}
 
 	refreshToken := util.RandomUint64()
@@ -308,10 +363,22 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	if util.AnswerRedisError(w, "refresh_token", err) != nil {
 		return
 	}
+	if admin {
+		_, err = refreshTokenToAdminClient.Set(refreshTokenString, "1", 0).Result()
+		if util.AnswerRedisError(w, "refresh_token", err) != nil {
+			return
+		}
+	}
 
 	_, err = accessTokenToRefreshTokenClient.Set(accessTokenString, refreshTokenString, time.Hour).Result()
 	if util.AnswerRedisError(w, "access_token", err) != nil {
 		return
+	}
+	if admin {
+		_, err = accessTokenToAdminClient.Set(accessTokenString, "1", time.Hour).Result()
+		if util.AnswerRedisError(w, "access_token", err) != nil {
+			return
+		}
 	}
 
 	tokens := make(map[string]string)
