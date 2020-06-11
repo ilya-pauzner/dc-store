@@ -24,7 +24,7 @@ service Validator {
 
 message ValidateRequest {
     string token = 1;
-    string admin = 2;
+    bool write = 2;
 }
 
 message ValidateReply {
