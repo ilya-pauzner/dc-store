@@ -39,6 +39,18 @@ func (s *server) ValidateToken(_ context.Context, req *pb.ValidateRequest) (*pb.
 		}
 	}
 
+	if req.Write {
+		_, err := accessTokenToAdminClient.Get(req.Token).Result()
+		if err != nil {
+			errorString, code := util.RedisErrorString("tokens", err)
+			if code == http.StatusBadRequest {
+				return &pb.ValidateReply{Success: false}, nil
+			} else {
+				return &pb.ValidateReply{Success: false}, errors.New(errorString)
+			}
+		}
+	}
+
 	return &pb.ValidateReply{Success: true}, nil
 }
 
@@ -79,6 +91,12 @@ func main() {
 	emailToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 6})
 	accessTokenToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 7})
 	refreshTokenToAdminClient = redis.NewClient(&redis.Options{Addr: "db:6379", DB: 8})
+
+	// creating admin
+	_ = accessTokenToRefreshTokenClient.Set("root", "toor", 0)
+	_ = accessTokenToAdminClient.Set("root", "1", 0)
+	_ = refreshTokenToAccessTokenClient.Set("toor", "root", 0)
+	_ = refreshTokenToAdminClient.Set("toor", "1", 0)
 
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {

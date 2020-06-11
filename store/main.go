@@ -54,8 +54,8 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func validateAndAnswer(w http.ResponseWriter, header http.Header) bool {
-	request := &pb.ValidateRequest{Token: header.Get("access_token")}
+func validateAndAnswer(write bool, w http.ResponseWriter, header http.Header) bool {
+	request := &pb.ValidateRequest{Token: header.Get("access_token"), Write: write}
 
 	reply, err := authClient.ValidateToken(context.Background(), request)
 	if err != nil {
@@ -80,7 +80,7 @@ func answerRedisError(w http.ResponseWriter, description string, err error) erro
 }
 
 func createStock(w http.ResponseWriter, r *http.Request) {
-	if !validateAndAnswer(w, r.Header) {
+	if !validateAndAnswer(true, w, r.Header) {
 		return
 	}
 
@@ -109,7 +109,7 @@ func createStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllStocks(w http.ResponseWriter, r *http.Request) {
-	if !validateAndAnswer(w, r.Header) {
+	if !validateAndAnswer(false, w, r.Header) {
 		return
 	}
 
@@ -144,7 +144,7 @@ func getAllStocks(w http.ResponseWriter, r *http.Request) {
 }
 
 func modifyStock(w http.ResponseWriter, r *http.Request) {
-	if !validateAndAnswer(w, r.Header) {
+	if !validateAndAnswer(true, w, r.Header) {
 		return
 	}
 
@@ -182,7 +182,7 @@ func modifyStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStock(w http.ResponseWriter, r *http.Request) {
-	if !validateAndAnswer(w, r.Header) {
+	if !validateAndAnswer(false, w, r.Header) {
 		return
 	}
 
@@ -199,7 +199,7 @@ func getStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteStock(w http.ResponseWriter, r *http.Request) {
-	if !validateAndAnswer(w, r.Header) {
+	if !validateAndAnswer(true, w, r.Header) {
 		return
 	}
 
