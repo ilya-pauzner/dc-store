@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-option go_package = "github.com/ilya-pauzner/dc-store/validator";
+option go_package = "github.com/ilya-pauzner/dc-store/validator/validator";
 
 package validator;
 
