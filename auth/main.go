@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -11,12 +12,45 @@ import (
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"github.com/ilya-pauzner/dc-store/util"
+	pb "github.com/ilya-pauzner/dc-store/validator"
 	"github.com/streadway/amqp"
+	"google.golang.org/grpc"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
 )
+
+const (
+	port = ":8082"
+)
+
+type server struct {
+	pb.UnimplementedValidatorServer
+}
+
+func (s *server) ValidateToken(_ context.Context, req *pb.ValidateRequest) (*pb.ValidateReply, error) {
+	log.Printf("Received: %v", req.Token)
+
+	_, err := accessTokensClient.Get(req.Token).Result()
+	if err != nil {
+		errorString, _ := util.RedisErrorString("tokens", err)
+		return &pb.ValidateReply{Success: false}, errors.New(errorString)
+	}
+
+	return &pb.ValidateReply{Success: true}, nil
+}
+
+func startServer() {
+	lis, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterValidatorServer(s, &server{})
+	log.Fatal(s.Serve(lis))
+}
 
 var (
 	passwordsClient     *redis.Client
@@ -60,6 +94,8 @@ func main() {
 		log.Fatalf("%s: %s", "Failed to declare a queue", err)
 	}
 
+	go startServer()
+
 	r := mux.NewRouter()
 
 	r.HandleFunc("/links/{code:[0-9]+}", activate)
@@ -67,7 +103,6 @@ func main() {
 	r.HandleFunc("/register", register).Methods("POST")
 	r.HandleFunc("/authorize", authorize).Methods("POST")
 	r.HandleFunc("/refresh", refresh).Methods("POST")
-	r.HandleFunc("/validate", validate).Methods("POST")
 
 	log.Fatal(http.ListenAndServe(":8081", r))
 }
@@ -283,19 +318,4 @@ func refresh(w http.ResponseWriter, r *http.Request) {
 	tokens["access_token"] = accessTokenString
 	tokens["refresh_token"] = refreshTokenString
 	_ = json.NewEncoder(w).Encode(tokens)
-}
-
-func validate(w http.ResponseWriter, r *http.Request) {
-	accessTokenString := r.Header.Get("access_token")
-	if accessTokenString == "" {
-		util.ErrorAsJson(w, "Failed to get access_token from request headers", http.StatusBadRequest)
-		return
-	}
-
-	_, err := accessTokensClient.Get(accessTokenString).Result()
-	if util.AnswerRedisError(w, "access_token", err) != nil {
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
 }

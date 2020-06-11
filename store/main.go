@@ -3,12 +3,14 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"github.com/ilya-pauzner/dc-store/util"
+	pb "github.com/ilya-pauzner/dc-store/validator"
+	"google.golang.org/grpc"
 	"log"
 	"net/http"
 	"strconv"
@@ -22,6 +24,7 @@ type Stock struct {
 
 var (
 	stocksClient *redis.Client
+	authClient   pb.ValidatorClient
 )
 
 func main() {
@@ -29,6 +32,13 @@ func main() {
 		Addr: "db:6379",
 		DB:   0, // use default DB
 	})
+
+	conn, err := grpc.Dial("http://auth:8081", grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	authClient = pb.NewValidatorClient(conn)
 
 	r := mux.NewRouter()
 
@@ -45,25 +55,18 @@ func main() {
 }
 
 func validateAndAnswer(w http.ResponseWriter, header http.Header) bool {
-	emptyBuffer := make([]byte, 0)
-	emptyReader := bytes.NewReader(emptyBuffer)
-	req, err := http.NewRequest(http.MethodPost, "http://auth:8081/validate", emptyReader)
+	request := &pb.ValidateRequest{Token: header.Get("access_token")}
+
+	reply, err := authClient.ValidateToken(context.Background(), request)
 	if err != nil {
 		util.ErrorAsJson(w, err.Error(), http.StatusInternalServerError)
 		return false
 	}
-
-	req.Header = header
-
-	answer, err := http.DefaultClient.Do(req)
-	if err != nil {
-		util.ErrorAsJson(w, err.Error(), http.StatusInternalServerError)
-		return false
-	}
-	if answer.StatusCode != http.StatusOK {
+	if !reply.Success {
 		util.ErrorAsJson(w, "Access denied", http.StatusForbidden)
 		return false
 	}
+
 	return true
 }
 
