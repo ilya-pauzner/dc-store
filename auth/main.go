@@ -22,10 +22,6 @@ import (
 	"time"
 )
 
-const (
-	port = ":8082"
-)
-
 type server struct {
 	pb.UnimplementedValidatorServer
 }
@@ -47,7 +43,7 @@ func (s *server) ValidateToken(_ context.Context, req *pb.ValidateRequest) (*pb.
 }
 
 func startServer() {
-	lis, err := net.Listen("tcp", port)
+	lis, err := net.Listen("tcp", ":8082")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
