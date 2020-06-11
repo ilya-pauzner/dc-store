@@ -16,12 +16,19 @@ func RandomUint64() uint64 {
 	return n.Uint64()
 }
 
-func AnswerRedisError(w http.ResponseWriter, description string, err error) error {
+func RedisErrorString(description string, err error) (string, int) {
 	if errors.Is(err, redis.Nil) {
-		ErrorAsJson(w, "No such key in "+description+" database", http.StatusBadRequest)
+		return "No such key in " + description + " database", http.StatusBadRequest
 	} else if err != nil {
-		ErrorAsJson(w, "Failed to get from "+description+" database", http.StatusInternalServerError)
+		return "Failed to get from " + description + " database", http.StatusInternalServerError
+	} else {
+		return "Unknown error while working with " + description + " database", http.StatusBadGateway
 	}
+}
+
+func AnswerRedisError(w http.ResponseWriter, description string, err error) error {
+	errorString, code := RedisErrorString(description, err)
+	ErrorAsJson(w, errorString, code)
 	return err
 }
 
