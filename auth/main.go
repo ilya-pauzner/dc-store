@@ -35,8 +35,12 @@ func (s *server) ValidateToken(_ context.Context, req *pb.ValidateRequest) (*pb.
 
 	_, err := accessTokensClient.Get(req.Token).Result()
 	if err != nil {
-		errorString, _ := util.RedisErrorString("tokens", err)
-		return &pb.ValidateReply{Success: false}, errors.New(errorString)
+		errorString, code := util.RedisErrorString("tokens", err)
+		if code == http.StatusBadRequest {
+			return &pb.ValidateReply{Success: false}, nil
+		} else {
+			return &pb.ValidateReply{Success: false}, errors.New(errorString)
+		}
 	}
 
 	return &pb.ValidateReply{Success: true}, nil

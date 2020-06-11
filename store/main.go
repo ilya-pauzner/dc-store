@@ -33,7 +33,7 @@ func main() {
 		DB:   0, // use default DB
 	})
 
-	conn, err := grpc.Dial("http://auth:8081", grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.Dial("auth:8082", grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
